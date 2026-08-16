@@ -1,36 +1,80 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Mnemo Web
 
-## Getting Started
+Next.js (App Router) frontend for Mnemo. See the root `README.md` for full-stack
+local setup and `docs/architecture/` for design-system and route conventions.
 
-First, run the development server:
+## Setup
 
 ```bash
+cd apps/web
+cp .env.local.example .env.local
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Runs at `http://localhost:3000`. Requires the API (`apps/api`) running at the URL
+in `NEXT_PUBLIC_API_URL` (defaults to `http://localhost:8000`).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Mock login: pick any of the seeded accounts (`alice@mnemo.dev`, `bob@mnemo.dev`,
+`carol@mnemo.dev`) at `/login` -- no password, per the MVP's mock-auth scope.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Testing
 
-## Learn More
+```bash
+npm test          # Vitest + React Testing Library
+npm run test:e2e  # Playwright -- starts both the web and API servers automatically
+npm run lint
+```
 
-To learn more about Next.js, take a look at the following resources:
+Vitest queries assertions by role/label/text (e.g. `getByRole("button", { name: "Add" })`),
+not by CSS class, so components should keep real semantic elements under any
+styling wrapper.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Route map
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+| Route | Purpose |
+|---|---|
+| `/login` | Mock sign-in (pick a seeded account, no password) |
+| `/spaces` | List/create spaces the user belongs to |
+| `/spaces/[spaceId]` | Space overview |
+| `/spaces/[spaceId]/items/[itemId]` | Item detail: view/edit, manual links, AI-suggested links |
+| `/spaces/[spaceId]/search` | Semantic search over the space's items |
+| `/spaces/[spaceId]/graph` | Interactive physics-based knowledge graph |
+| `/spaces/[spaceId]/ask` | One-shot grounded Q&A |
+| `/spaces/[spaceId]/conversations` | Conversation list |
+| `/spaces/[spaceId]/conversations/[conversationId]` | Multi-turn grounded Q&A with history |
+| `/spaces/[spaceId]/memory` | Persistent memory summaries for the space |
 
-## Deploy on Vercel
+`app/spaces/[spaceId]/layout.tsx` mounts the persistent `Sidebar` nav for every
+space-scoped route above; the plain `/spaces` list page keeps `TopBar` only. Every
+space-scoped route is wrapped in `RequireAuth` (`components/RequireAuth.tsx`),
+which redirects to `/login` if `useAuth()` (`lib/auth-context.tsx`) has no user
+once its initial `/api/v1/auth/me` check resolves.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Data fetching
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+All API calls go through `lib/api-client.ts`'s `api.get/post/patch/delete` helpers,
+which call the API with `credentials: "include"` (session cookie auth, no bearer
+tokens) and throw a typed `ApiError` (`status`, `code`, `message`) on any non-2xx
+response, parsed from the backend's `{ error: { code, message, request_id } }`
+envelope. `lib/types.ts` mirrors the API's Pydantic response schemas by hand --
+there is no codegen, so a backend schema change requires a matching manual edit
+here (see `docs/architecture/api-reference.md` for the schemas to mirror).
+
+## Component layout
+
+| Path | Contents |
+|---|---|
+| `components/ui/` | Shared presentational primitives (`Button`, `Card`, `Input`, `Select`, `Badge`, `EmptyState`, `ErrorMessage`, `LoadingState`, `ListRow`, `MotionList`) -- thin styled wrappers over native elements, kept semantic on purpose (see Testing above) |
+| `components/layout/` | `TopBar`, `Sidebar` (space-scoped nav shell) |
+| `components/` (root) | Domain components: `ItemList`, `ItemCreateForm`, `ItemLinkPicker`, `SuggestedLinks`, `SpaceCreateForm`, `SpaceSwitcher`, `MemberInviteForm`, `GraphView`/`GraphViewInner`, `RequireAuth` |
+| `lib/` | `api-client.ts`, `types.ts`, `auth-context.tsx`, `cn.ts` (clsx wrapper), `motionTokens.ts`, `text.ts` |
+
+`GraphView`/`GraphViewInner` is a two-component split (`next/dynamic(..., { ssr: false })`)
+because `react-force-graph-2d` touches `window`/canvas at module load time and
+isn't SSR-safe -- any future canvas/WebGL component should follow the same split.
+
+For the design-token system (Tailwind v4 `@theme inline`, the `components/ui/`
+primitive layer, navigation shell, and knowledge-graph rendering details), see
+`docs/architecture/frontend-redesign.md`. For a fuller architecture walkthrough,
+see `docs/architecture/frontend-overview.md`.

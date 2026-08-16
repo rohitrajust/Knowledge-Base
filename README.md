@@ -6,6 +6,12 @@ search, grounded Q&A, and an interactive knowledge graph.
 See `.claude/prds/mnemo.prd.md` for the product requirements and `.claude/plans/`
 for milestone implementation plans.
 
+## Documentation
+
+See `docs/README.md` for the full documentation index -- architecture docs
+(backend conventions, frontend structure, API reference), and pointers to the
+per-app READMEs (`apps/api/README.md`, `apps/web/README.md`).
+
 ## Local development
 
 Requires PostgreSQL (with the `pgvector` extension available) running locally.
