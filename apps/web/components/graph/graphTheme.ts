@@ -25,6 +25,9 @@ export interface GraphTheme {
   labelTextMuted: string;
   /** Halo drawn just outside a node so it reads as sitting *on* the glass field. */
   nodeRim: string;
+  /** Ring on nodes matching the current search -- deliberately not a brand colour,
+   *  so "found" cannot be confused with "hovered" or "selected". */
+  searchRing: string;
 }
 
 /**
@@ -55,6 +58,7 @@ const FALLBACK: GraphTheme = {
   labelText: "#1f2937",
   labelTextMuted: "#4b5563",
   nodeRim: "rgba(255, 255, 255, 0.72)",
+  searchRing: "#b45309",
 };
 
 export function readGraphTheme(): GraphTheme {
@@ -70,5 +74,6 @@ export function readGraphTheme(): GraphTheme {
     labelText: FALLBACK.labelText,
     labelTextMuted: FALLBACK.labelTextMuted,
     nodeRim: FALLBACK.nodeRim,
+    searchRing: FALLBACK.searchRing,
   };
 }

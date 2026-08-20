@@ -57,9 +57,13 @@ test("login, create space, switch spaces, invite a member, capture and link note
   await expect(page.getByRole("link", { name: "Note Two" })).toBeVisible();
 
   // The graph page should render a canvas with both linked notes as nodes.
+  // Scoped to the first canvas: the graph now also renders a minimap, so a bare
+  // locator("canvas") matches two elements and trips strict mode. Same situation as
+  // the combobox selectors above -- a new element made a previously unambiguous
+  // selector ambiguous; the assertion's intent is unchanged.
   const spaceUrl = page.url().replace(/\/items\/.*$/, "");
   await page.goto(`${spaceUrl}/graph`);
-  await expect(page.locator("canvas")).toBeVisible();
+  await expect(page.locator("canvas").first()).toBeVisible();
 
   // Semantic search should surface Note Two as the top result for its own title.
   await page.goto(`${spaceUrl}/search`);

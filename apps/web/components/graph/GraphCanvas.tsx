@@ -28,6 +28,12 @@ const PULSE_AMPLITUDE = 0.12;
 const PULSE_FREQ = 0.6;
 const DIMMED_ALPHA = 0.16;
 const DIMMED_LINK_ALPHA = 0.12;
+/** Outside the focused neighbourhood entirely -- present, but barely. */
+const FOCUS_OUT_ALPHA = 0.06;
+const FOCUS_OUT_LINK_ALPHA = 0.04;
+/** Two hops out: visibly secondary, still readable as context. */
+const FOCUS_FAR_ALPHA = 0.55;
+const SEARCH_PULSE_FREQ = 2.2;
 const LABEL_MAX_CHARS = 24;
 
 export interface GraphCanvasProps {
@@ -40,6 +46,10 @@ export interface GraphCanvasProps {
   /** Read every frame by the painters; a ref so mouse-move never re-renders React. */
   hoveredIdRef: React.RefObject<string | null>;
   selectedId: string | null;
+  /** Hop distance from the focused node; null when focus mode is off. */
+  focusDepth: Map<string, number> | null;
+  /** Nodes matching the current search; always labelled and ringed. */
+  searchMatches: Set<string>;
   driftAmplitude: number;
   reduceMotion: boolean;
   /** False keeps force-graph repainting after the simulation cools, for idle motion. */
@@ -89,6 +99,8 @@ export function GraphCanvas({
   fgRef,
   hoveredIdRef,
   selectedId,
+  focusDepth,
+  searchMatches,
   driftAmplitude,
   reduceMotion,
   autoPauseRedraw,
@@ -126,8 +138,67 @@ export function GraphCanvas({
     return hoveredIdRef.current ?? selectedId;
   }
 
+  /**
+   * Which node drives *de-emphasis*, as opposed to which node is decorated as active.
+   *
+   * Clicking a node both selects it and focuses on it. If selection kept driving
+   * dimming while focused, every node beyond one hop would be pinned at the hover
+   * dim level, and the 1/2/All depth control would change the breadcrumb count while
+   * changing almost nothing on screen -- the two systems would be fighting for the
+   * same pixels. While focus is active it owns the dimming, and only a live hover
+   * narrows things further.
+   */
+  function dimmingId(): string | null {
+    return focusDepth ? hoveredIdRef.current : activeId();
+  }
+
   function radiusOf(id: string): number {
     return model.radius.get(id) ?? 4;
+  }
+
+  /**
+   * How strongly a node is drawn, combining the two independent de-emphasis systems.
+   *
+   * Focus mode is the outer filter (is this node in the neighbourhood at all), and
+   * hover/selection is the inner one (is it the thing being pointed at). They compose
+   * by taking the lower value, so hovering inside a focused subgraph dims the rest of
+   * that subgraph without ever brightening something focus had already pushed away.
+   */
+  function nodeEmphasis(id: string): number {
+    let alpha = 1;
+    if (focusDepth) {
+      const d = focusDepth.get(id);
+      if (d === undefined) alpha = FOCUS_OUT_ALPHA;
+      else if (d >= 2) alpha = FOCUS_FAR_ALPHA;
+    }
+    const dimId = dimmingId();
+    if (dimId !== null) {
+      const isActive = dimId === id;
+      const isNeighbor = !isActive && (model.adjacency.get(dimId)?.has(id) ?? false);
+      if (!isActive && !isNeighbor) alpha = Math.min(alpha, DIMMED_ALPHA);
+    }
+    return alpha;
+  }
+
+  function edgeEmphasis(sourceId: string, targetId: string, active: boolean): number {
+    let alpha = active ? 1 : 0.55;
+    if (focusDepth && !(focusDepth.has(sourceId) && focusDepth.has(targetId))) {
+      alpha = Math.min(alpha, FOCUS_OUT_LINK_ALPHA);
+    }
+    if (dimmingId() !== null && !active) alpha = Math.min(alpha, DIMMED_LINK_ALPHA);
+    return alpha;
+  }
+
+  /** A node keeps its label regardless of zoom when it is being engaged with. */
+  function isForced(id: string): boolean {
+    if (searchMatches.has(id)) return true;
+    const highlightId = activeId();
+    if (highlightId !== null && (highlightId === id || (model.adjacency.get(highlightId)?.has(id) ?? false))) {
+      return true;
+    }
+    // Inside a focused neighbourhood every remaining node is, by definition, what the
+    // user asked to look at -- so they are all labelled regardless of zoom.
+    return focusDepth?.has(id) ?? false;
   }
 
   // --- physics ------------------------------------------------------------
@@ -260,7 +331,10 @@ export function GraphCanvas({
 
         const highlightId = activeId();
         const active = highlightId !== null && (String(s.id) === highlightId || String(e.id) === highlightId);
-        const dimmed = highlightId !== null && !active;
+        const alpha = edgeEmphasis(String(s.id), String(e.id), active);
+        // "Dimmed" now means "faded far enough that detail is noise", whether that came
+        // from hover de-emphasis or from falling outside the focused neighbourhood.
+        const dimmed = alpha <= DIMMED_LINK_ALPHA;
 
         const relation = raw.relation ?? "related";
         const meta = RELATIONS[relation];
@@ -268,7 +342,7 @@ export function GraphCanvas({
         const { cx, cy } = controlPoint(sx, sy, ex, ey, curvature);
 
         ctx.save();
-        ctx.globalAlpha = dimmed ? DIMMED_LINK_ALPHA : active ? 1 : 0.55;
+        ctx.globalAlpha = alpha;
         // Widths and dash lengths are divided by globalScale so they stay constant in
         // screen pixels: a fixed graph-space width would vanish when zoomed out and
         // turn into a slab when zoomed in.
@@ -360,7 +434,8 @@ export function GraphCanvas({
         const highlightId = activeId();
         const isActive = highlightId === id;
         const isNeighbor = highlightId !== null && !isActive && (model.adjacency.get(highlightId)?.has(id) ?? false);
-        const dimmed = highlightId !== null && !isActive && !isNeighbor;
+        const isMatch = searchMatches.has(id);
+        const alpha = nodeEmphasis(id);
 
         const t = performance.now() / 1000;
         const { dx, dy } = drift(id, t);
@@ -369,15 +444,22 @@ export function GraphCanvas({
 
         // The pulse is now reserved for the node the user is actually engaging with.
         // Applied to every node at once (as before) it made a large graph shimmer.
-        const pulse =
-          !reduceMotion && isActive
-            ? Math.sin(t * PULSE_FREQ + (model.phase.get(id) ?? 0) * 2.3) * PULSE_AMPLITUDE
-            : 0;
+        // Search matches pulse faster than the selection does, so a match reads as
+        // "found this for you" rather than "you are pointing at this".
+        const pulse = reduceMotion
+          ? 0
+          : isMatch
+            ? Math.sin(t * SEARCH_PULSE_FREQ) * PULSE_AMPLITUDE * 1.5
+            : isActive
+              ? Math.sin(t * PULSE_FREQ + (model.phase.get(id) ?? 0) * 2.3) * PULSE_AMPLITUDE
+              : 0;
         const base = radiusOf(id) * (isActive ? 1.25 : 1);
         const radius = base * (1 + pulse);
 
         ctx.save();
-        ctx.globalAlpha = dimmed ? DIMMED_ALPHA : 1;
+        // A search match is never dimmed away -- the whole point of searching is to
+        // find something that may well be outside the current focus.
+        ctx.globalAlpha = isMatch ? 1 : alpha;
 
         const kindColor = KIND_COLORS[n.kind];
         ctx.beginPath();
@@ -407,6 +489,14 @@ export function GraphCanvas({
         ctx.lineWidth = 1;
         ctx.strokeStyle = theme.nodeRim;
         ctx.stroke();
+
+        if (isMatch) {
+          ctx.beginPath();
+          ctx.arc(drawX, drawY, radius + 4, 0, 2 * Math.PI);
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = theme.searchRing;
+          ctx.stroke();
+        }
 
         if (isActive) {
           ctx.beginPath();
@@ -443,14 +533,17 @@ export function GraphCanvas({
           if (!node || node.x === undefined || node.y === undefined) continue;
 
           const isActive = highlightId === id;
-          const isNeighbor =
-            highlightId !== null && !isActive && (model.adjacency.get(highlightId)?.has(id) ?? false);
-          // Anything the user is engaging with keeps its label regardless of zoom;
-          // otherwise the middle band shows hubs only, which is what keeps a dense
-          // graph from turning into a wall of text.
-          const forced = isActive || isNeighbor;
-          if (highlightId !== null && !forced) continue;
+          // Anything the user is engaging with -- pointed at, adjacent to, or found by
+          // search -- keeps its label regardless of zoom; otherwise the middle band
+          // shows hubs only, which is what keeps a dense graph from becoming a wall of
+          // text.
+          const forced = isForced(id);
+          if (dimmingId() !== null && !forced) continue;
           if (!forced && !showAll && !hubIds.has(id)) continue;
+          // Labels inherit the node's emphasis: a name floating at full strength over
+          // a node faded to 6% reads as a rendering bug rather than as context.
+          const alpha = searchMatches.has(id) ? 1 : nodeEmphasis(id);
+          if (alpha <= FOCUS_OUT_ALPHA) continue;
 
           const { dx, dy } = drift(id, t);
           const r = radiusOf(id);
@@ -480,8 +573,10 @@ export function GraphCanvas({
           ctx.strokeStyle = theme.labelBorder;
           ctx.stroke();
 
-          ctx.fillStyle = isActive ? theme.labelText : theme.labelTextMuted;
+          ctx.globalAlpha = alpha;
+          ctx.fillStyle = isActive || searchMatches.has(id) ? theme.labelText : theme.labelTextMuted;
           ctx.fillText(text, cx, cy);
+          ctx.globalAlpha = 1;
         }
         ctx.restore();
       }}
