@@ -4,22 +4,64 @@
   --background: #ffffff;
   --foreground: #171717;
 
-  /* Brand scale -- UST-inspired teal */
-  --color-brand-50: #e6f4f5;
-  --color-brand-100: #cce9eb;
-  --color-brand-200: #99d3d7;
-  --color-brand-300: #66bdc3;
-  --color-brand-400: #036e74;
-  --color-brand-500: #036e74;
+  /* Brand scale -- UST-inspired teal, anchored on the brand's #036e74 at 600.
+     Deliberately monotonic: the previous ramp had 400/500/600/800 all set to the
+     identical #036e74 while 700 (#0b858b) was *lighter* than 600, which made
+     Button's `bg-brand-700 hover:bg-brand-800` darken on hover only by accident
+     and left `focus:border-brand-500` / `hover:border-brand-300` with no
+     predictable contrast relationship. */
+  --color-brand-50: #eef8f8;
+  --color-brand-100: #d3ecee;
+  --color-brand-200: #a8dade;
+  --color-brand-300: #6ec2c8;
+  --color-brand-400: #35a3ab;
+  --color-brand-500: #10868e;
   --color-brand-600: #036e74;
-  --color-brand-700: #0b858b;
-  --color-brand-800: #036e74;
-  --color-brand-900: #014247;
+  --color-brand-700: #045c61;
+  --color-brand-800: #04494d;
+  --color-brand-900: #023236;
 
   /* Neutral surface scale */
   --color-surface: #ffffff;
   --color-surface-muted: #f7f8f8;
   --color-border: #e2e5e4;
+
+  /* ---------------------------------------------------------------------
+     Glass design tokens.
+
+     Every frosted surface in the app draws from these rather than hardcoding
+     an rgba(), so the whole system can be retuned from one place. Three
+     opacity steps exist because they carry different accessibility
+     obligations, not just different looks:
+
+       --glass-bg-strong (.80)  the only step body text may sit on
+       --glass-bg        (.62)  panels, cards, chrome with short labels
+       --glass-bg-subtle (.45)  decorative chrome and chips only
+
+     Shadows are tinted with brand-900 rather than black: a neutral-black
+     shadow over a teal aurora reads as dirty grey, while a tinted one reads
+     as depth.
+     --------------------------------------------------------------------- */
+  --glass-bg: rgb(255 255 255 / 0.62);
+  --glass-bg-strong: rgb(255 255 255 / 0.8);
+  --glass-bg-subtle: rgb(255 255 255 / 0.45);
+  --glass-border: rgb(255 255 255 / 0.65);
+  --glass-border-strong: rgb(255 255 255 / 0.85);
+  --glass-ring: rgb(3 110 116 / 0.08);
+
+  --glass-blur: 18px;
+  --glass-blur-strong: 28px;
+  --glass-blur-subtle: 10px;
+
+  --shadow-glass:
+    0 1px 2px rgb(2 50 54 / 0.04),
+    0 8px 24px -6px rgb(2 50 54 / 0.1);
+  --shadow-glass-lg:
+    0 2px 4px rgb(2 50 54 / 0.05),
+    0 24px 48px -12px rgb(2 50 54 / 0.18);
+
+  --radius-glass: 16px;
+  --radius-glass-lg: 22px;
 }
 
 @theme inline {
@@ -42,10 +84,112 @@
   --color-surface: var(--color-surface);
   --color-surface-muted: var(--color-surface-muted);
   --color-border: var(--color-border);
+
+  /* Exposed as Tailwind utilities so callers can write `rounded-glass`,
+     `shadow-glass`, `border-glass`, `bg-glass` without a bespoke class. */
+  --color-glass: var(--glass-bg);
+  --color-glass-strong: var(--glass-bg-strong);
+  --color-glass-subtle: var(--glass-bg-subtle);
+  --color-glass-border: var(--glass-border);
+
+  --radius-glass: var(--radius-glass);
+  --radius-glass-lg: var(--radius-glass-lg);
+
+  --shadow-glass: var(--shadow-glass);
+  --shadow-glass-lg: var(--shadow-glass-lg);
+}
+
+/* ---------------------------------------------------------------------------
+   Glass utilities.
+
+   Declared with Tailwind v4's `@utility` (rather than as plain CSS classes)
+   specifically so they land in the utilities layer: a plain class defined after
+   `@import "tailwindcss"` would beat any utility a caller passes via
+   `className`, making `<Card className="bg-white">` silently impossible.
+   --------------------------------------------------------------------------- */
+@utility glass {
+  background-color: var(--glass-bg);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(180%);
+  backdrop-filter: blur(var(--glass-blur)) saturate(180%);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-glass);
+}
+
+@utility glass-strong {
+  background-color: var(--glass-bg-strong);
+  -webkit-backdrop-filter: blur(var(--glass-blur-strong)) saturate(180%);
+  backdrop-filter: blur(var(--glass-blur-strong)) saturate(180%);
+  border: 1px solid var(--glass-border-strong);
+  box-shadow: var(--shadow-glass-lg);
+}
+
+@utility glass-subtle {
+  background-color: var(--glass-bg-subtle);
+  -webkit-backdrop-filter: blur(var(--glass-blur-subtle)) saturate(160%);
+  backdrop-filter: blur(var(--glass-blur-subtle)) saturate(160%);
+  border: 1px solid var(--glass-border);
+}
+
+/* Backdrop-filter fallback. Without this, a browser that can't blur renders
+   glass surfaces as flat 45-62% white washes over a saturated aurora -- text on
+   them drops well below 4.5:1. Raising the opacity toward opaque trades the
+   effect for legibility, which is the correct trade. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass {
+    background-color: rgb(255 255 255 / 0.94);
+  }
+  .glass-strong {
+    background-color: rgb(255 255 255 / 0.97);
+  }
+  .glass-subtle {
+    background-color: rgb(255 255 255 / 0.88);
+  }
 }
 
 body {
+  /* The ambient aurora (components/AmbientBackground.tsx) is painted behind
+     everything at -z-10; this stays as the base wash it sits on, and as the
+     solid fallback if that component is ever unmounted. */
   background: var(--color-surface-muted);
   color: var(--foreground);
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+/* Aurora drift. Kept in CSS (not Motion) because it is purely decorative,
+   never interactive, and must keep running across route changes without a
+   React component re-mounting it. */
+@keyframes aurora-drift-a {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(6%, -4%, 0) scale(1.12);
+  }
+}
+
+@keyframes aurora-drift-b {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1.05);
+  }
+  50% {
+    transform: translate3d(-5%, 5%, 0) scale(0.94);
+  }
+}
+
+@keyframes aurora-drift-c {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(0.98);
+  }
+  50% {
+    transform: translate3d(4%, 6%, 0) scale(1.08);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-aurora-blob] {
+    animation: none !important;
+  }
 }

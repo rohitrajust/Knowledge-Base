@@ -12,12 +12,14 @@
   },
   "dependencies": {
     "clsx": "^2.1.1",
+    "d3-force": "^3.0.0",
     "lucide-react": "^1.31.0",
     "motion": "^13.1.0",
     "next": "16.3.1",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "react-force-graph-2d": "^1.29.1"
+    "react-force-graph-2d": "^1.29.1",
+    "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",
@@ -25,6 +27,7 @@
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.4",
+    "@types/d3-force": "^3.0.10",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
