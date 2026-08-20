@@ -13,7 +13,7 @@ export function TopBar() {
   const router = useRouter();
 
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between bg-brand-800 px-4 text-white sm:px-6">
+    <header className="sticky top-0 flex h-14 shrink-0 items-center justify-between border-b border-white/10 bg-brand-800/80 px-4 text-white backdrop-blur-xl backdrop-saturate-150 sm:px-6">
       <Link href="/spaces" className="flex items-center gap-2">
         <MnemoLogo />
       </Link>

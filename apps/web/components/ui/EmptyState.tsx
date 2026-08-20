@@ -26,7 +26,9 @@ export function EmptyState({
       <motion.div
         {...fadeIn}
         className={cn(
-          "rounded-xl border border-dashed border-border bg-surface-muted px-4 py-8 text-center text-sm text-gray-500",
+          // border-dashed overrides the solid hairline `glass-subtle` sets, keeping
+          // the "nothing here yet" affordance the previous dashed box carried.
+          "glass-subtle rounded-glass border-dashed border-brand-200/70 px-4 py-8 text-center text-sm text-gray-600",
           className
         )}
       >

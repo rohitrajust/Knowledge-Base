@@ -2,16 +2,11 @@
 
 import type { SelectHTMLAttributes } from "react";
 import { cn } from "@/lib/cn";
+import { GLASS_FIELD } from "@/components/ui/Input";
 
 export function Select({ className, children, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
   return (
-    <select
-      className={cn(
-        "rounded-md border border-border bg-surface px-2.5 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100",
-        className
-      )}
-      {...props}
-    >
+    <select className={cn(GLASS_FIELD, "py-2 pr-8 pl-2.5", className)} {...props}>
       {children}
     </select>
   );

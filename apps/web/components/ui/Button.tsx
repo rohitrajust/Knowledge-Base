@@ -16,21 +16,27 @@ type NativeButtonProps = Omit<
 >;
 
 const BASE =
-  "inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors disabled:opacity-50 disabled:pointer-events-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 focus-visible:ring-offset-1";
+  "inline-flex items-center justify-center gap-1.5 rounded-xl font-medium transition-all disabled:opacity-50 disabled:pointer-events-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400/50 focus-visible:ring-offset-1 focus-visible:ring-offset-white/50";
 
 const SIZES: Record<ButtonSize, string> = {
   sm: "px-2.5 py-1 text-xs",
   md: "px-4 py-2 text-sm",
 };
 
+// `primary` gets a vertical gradient plus an inset top highlight -- the same
+// trick that makes a physical glass button read as lit from above. Without the
+// highlight a flat teal fill looks pasted onto the frosted surfaces around it.
+// `secondary` becomes glass so it reads as part of the same material system.
 const VARIANTS: Record<ButtonVariant, string> = {
-  primary: "bg-brand-700 text-white hover:bg-brand-800",
-  secondary: "border border-border bg-surface text-gray-700 hover:bg-surface-muted",
-  danger: "border border-red-300 text-red-600 hover:bg-red-50",
+  primary:
+    "bg-gradient-to-b from-brand-600 to-brand-700 text-white hover:from-brand-700 hover:to-brand-800 [box-shadow:inset_0_1px_0_rgb(255_255_255/0.18),0_1px_2px_rgb(2_50_54/0.18)]",
+  secondary:
+    "border border-white/70 bg-white/55 text-gray-700 backdrop-blur-sm hover:border-brand-200 hover:bg-white/80 hover:text-gray-900",
+  danger: "border border-red-300/70 bg-red-50/50 text-red-600 backdrop-blur-sm hover:bg-red-50/90",
   ghost: "text-gray-500 hover:text-gray-900",
   "ghost-invert": "text-white/80 hover:text-white",
   "ghost-danger": "text-gray-400 hover:text-red-600",
-  link: "p-0 text-brand-600 hover:underline",
+  link: "p-0 text-brand-700 hover:underline",
 };
 
 // Only "boxed" variants get a hover scale -- inline text-style actions

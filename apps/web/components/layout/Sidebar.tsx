@@ -48,7 +48,7 @@ export function Sidebar({
         {open && (
           <motion.div
             key="backdrop"
-            className="fixed inset-0 z-30 bg-black/30 md:hidden"
+            className="fixed inset-0 z-30 bg-brand-900/25 backdrop-blur-sm md:hidden"
             onClick={onClose}
             aria-hidden="true"
             initial={{ opacity: 0 }}
@@ -64,7 +64,7 @@ export function Sidebar({
           viewport, so a responsive slide-in/out is safer to leave to CSS here. */}
       <nav
         className={cn(
-          "fixed inset-y-0 left-0 z-40 flex w-60 shrink-0 flex-col gap-4 border-r border-border bg-surface px-3 py-4 transition-transform duration-200 md:static md:z-auto md:translate-x-0",
+          "glass fixed inset-y-0 left-0 z-40 flex w-60 shrink-0 flex-col gap-4 px-3 py-4 transition-transform duration-200 md:static md:z-auto md:translate-x-0",
           open ? "translate-x-0" : "-translate-x-full"
         )}
       >
@@ -80,13 +80,13 @@ export function Sidebar({
                   onClick={onClose}
                   className={cn(
                     "relative flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors",
-                    active ? "font-medium text-brand-800" : "text-gray-600 hover:bg-surface-muted hover:text-gray-900"
+                    active ? "font-medium text-brand-800" : "text-gray-600 hover:bg-white/50 hover:text-gray-900"
                   )}
                 >
                   {active && (
                     <motion.span
                       layoutId="sidebar-active-pill"
-                      className="absolute inset-0 rounded-md border-l-2 border-brand-600 bg-brand-50"
+                      className="absolute inset-0 rounded-lg border-l-2 border-brand-600 bg-white/70 shadow-[0_1px_2px_rgb(2_50_54/0.06)] backdrop-blur-sm"
                       transition={
                         reduceMotion
                           ? { duration: 0 }

@@ -105,13 +105,15 @@ export default function ConversationThreadPage({
             key={message.id}
             className={cn(
               "rounded-xl border px-4 py-3",
-              message.role === "user" ? "border-border bg-surface-muted" : "border-border bg-surface"
+              message.role === "user"
+                ? "border-brand-200/60 bg-brand-50/55 backdrop-blur-md"
+                : "border-white/70 bg-white/80 backdrop-blur-md"
             )}
           >
             <p className="text-xs uppercase tracking-wide text-gray-400">{message.role}</p>
             <p className="mt-1 whitespace-pre-wrap text-sm text-gray-900">{message.content}</p>
             {message.sources && message.sources.length > 0 && (
-              <div className="mt-2 flex flex-col gap-1 border-t border-border pt-2">
+              <div className="mt-2 flex flex-col gap-1 border-t border-gray-900/8 pt-2">
                 {message.sources.map((source, index) => (
                   <Link
                     key={source.item_id}

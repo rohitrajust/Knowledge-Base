@@ -17,6 +17,15 @@ import { extendTailwindMerge } from "tailwind-merge";
 // twMerge's config type only admits its own built-in group names.
 const twMerge = extendTailwindMerge<"glass">({
   extend: {
+    // `--radius-glass` / `--shadow-glass` are custom theme keys, so twMerge does not
+    // know that `rounded-glass` is a border-radius utility or that `shadow-glass` is
+    // a box-shadow one. Without registering them, `cn("rounded-glass", "rounded-none")`
+    // emits both and hands the decision back to stylesheet order -- the exact failure
+    // twMerge was added to eliminate.
+    theme: {
+      radius: ["glass", "glass-lg"],
+      shadow: ["glass", "glass-lg"],
+    },
     classGroups: {
       glass: ["glass", "glass-strong", "glass-subtle"],
     },

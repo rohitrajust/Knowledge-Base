@@ -57,13 +57,15 @@ export default function LoginPage() {
         </p>
       </div>
 
-      <Card className="flex flex-col gap-3 p-4">
-        <div className="flex gap-1 rounded-md bg-surface-muted p-1 text-sm">
+      <Card className="glass-strong flex flex-col gap-3 p-4">
+        <div className="flex gap-1 rounded-xl bg-white/40 p-1 text-sm ring-1 ring-white/60">
           <button
             type="button"
             onClick={() => switchMode("signin")}
-            className={`flex-1 rounded px-3 py-1.5 transition-colors ${
-              mode === "signin" ? "bg-surface font-medium text-gray-900 shadow-sm" : "text-gray-500"
+            className={`flex-1 rounded-lg px-3 py-1.5 transition-colors ${
+              mode === "signin"
+                ? "bg-white/90 font-medium text-gray-900 shadow-[0_1px_2px_rgb(2_50_54/0.08)]"
+                : "text-gray-600 hover:text-gray-900"
             }`}
           >
             Sign in
@@ -71,8 +73,10 @@ export default function LoginPage() {
           <button
             type="button"
             onClick={() => switchMode("signup")}
-            className={`flex-1 rounded px-3 py-1.5 transition-colors ${
-              mode === "signup" ? "bg-surface font-medium text-gray-900 shadow-sm" : "text-gray-500"
+            className={`flex-1 rounded-lg px-3 py-1.5 transition-colors ${
+              mode === "signup"
+                ? "bg-white/90 font-medium text-gray-900 shadow-[0_1px_2px_rgb(2_50_54/0.08)]"
+                : "text-gray-600 hover:text-gray-900"
             }`}
           >
             Sign up

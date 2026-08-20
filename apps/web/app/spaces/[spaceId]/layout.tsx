@@ -23,7 +23,7 @@ export default function SpaceLayout({ children, params }: LayoutProps<'/spaces/[
         <button
           type="button"
           onClick={() => setMobileNavOpen(true)}
-          className="m-3 inline-flex items-center gap-2 rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-gray-600 md:hidden"
+          className="glass m-3 inline-flex items-center gap-2 rounded-xl px-3 py-1.5 text-sm text-gray-700 md:hidden"
         >
           <Menu className="h-4 w-4" />
           Menu
