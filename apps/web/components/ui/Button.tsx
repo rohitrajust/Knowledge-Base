@@ -32,10 +32,10 @@ const VARIANTS: Record<ButtonVariant, string> = {
     "bg-gradient-to-b from-brand-600 to-brand-700 text-white hover:from-brand-700 hover:to-brand-800 [box-shadow:inset_0_1px_0_rgb(255_255_255/0.18),0_1px_2px_rgb(2_50_54/0.18)]",
   secondary:
     "border border-white/70 bg-white/55 text-gray-700 backdrop-blur-sm hover:border-brand-200 hover:bg-white/80 hover:text-gray-900",
-  danger: "border border-red-300/70 bg-red-50/50 text-red-600 backdrop-blur-sm hover:bg-red-50/90",
+  danger: "border border-danger-border/70 bg-danger-bg/50 text-danger-text backdrop-blur-sm hover:bg-danger-bg/90",
   ghost: "text-gray-500 hover:text-gray-900",
   "ghost-invert": "text-white/80 hover:text-white",
-  "ghost-danger": "text-gray-400 hover:text-red-600",
+  "ghost-danger": "text-gray-400 hover:text-danger-text",
   link: "p-0 text-brand-700 hover:underline",
 };
 

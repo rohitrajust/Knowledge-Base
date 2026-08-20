@@ -54,13 +54,15 @@ export function AmbientBackground() {
           animation: "aurora-drift-c 92s ease-in-out infinite",
         }}
       />
-      {/* Warm counterpoint -- keeps an all-teal field from reading as a colour cast. */}
+      {/* Warm counterpoint -- keeps an all-teal field from reading as a colour cast.
+          Uses UST's own accent Orange (#FC6A59) rather than an arbitrary amber, so
+          this stays inside the approved brand palette. */}
       <div
         data-aurora-blob
         className="absolute bottom-[5%] right-[10%] h-[42vmax] w-[42vmax] rounded-full opacity-40 will-change-transform"
         style={{
           background:
-            "radial-gradient(circle at 50% 50%, rgb(217 119 6 / 0.14) 0%, rgb(217 119 6 / 0.05) 46%, rgb(217 119 6 / 0) 70%)",
+            "radial-gradient(circle at 50% 50%, rgb(252 106 89 / 0.14) 0%, rgb(252 106 89 / 0.05) 46%, rgb(252 106 89 / 0) 70%)",
           animation: "aurora-drift-b 70s ease-in-out infinite reverse",
         }}
       />

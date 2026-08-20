@@ -2,8 +2,7 @@
 
 import { cn } from "@/lib/cn";
 
-// A small three-node graph glyph -- a nod to Mnemo's own knowledge-graph feature,
-// distinct from the UST co-brand mark rendered alongside it in the top bar.
+// A small three-node graph glyph -- a nod to Mnemo's own knowledge-graph feature.
 export function MnemoLogo({ className }: { className?: string }) {
   return (
     <span className={cn("inline-flex items-center gap-2", className)}>

@@ -2,28 +2,35 @@
 
 :root {
   --background: #ffffff;
-  --foreground: #171717;
+  --foreground: #231f20; /* UST Soft Black -- the brand's only approved dark text color. */
 
-  /* Brand scale -- UST-inspired teal, anchored on the brand's #036e74 at 600.
-     Deliberately monotonic: the previous ramp had 400/500/600/800 all set to the
-     identical #036e74 while 700 (#0b858b) was *lighter* than 600, which made
-     Button's `bg-brand-700 hover:bg-brand-800` darken on hover only by accident
-     and left `focus:border-brand-500` / `hover:border-brand-300` with no
-     predictable contrast relationship. */
-  --color-brand-50: #eef8f8;
-  --color-brand-100: #d3ecee;
-  --color-brand-200: #a8dade;
-  --color-brand-300: #6ec2c8;
-  --color-brand-400: #35a3ab;
-  --color-brand-500: #10868e;
-  --color-brand-600: #036e74;
-  --color-brand-700: #045c61;
-  --color-brand-800: #04494d;
-  --color-brand-900: #023236;
+  /* Brand scale -- official UST teal (brand.ust.com/color), not an approximation.
+     50/100/200/300/500/700/900 are interpolated in HSL around three exact,
+     pinned brand hexes (400, 600, 800) so the ramp stays monotonic in lightness;
+     400/600/800 themselves are never adjusted. */
+  --color-brand-50: #ecf4f5;
+  --color-brand-100: #cde6e9;
+  --color-brand-200: #96d3da;
+  --color-brand-300: #40c4d2;
+  --color-brand-400: #0097ac; /* UST Light Teal (official) */
+  --color-brand-500: #007b89;
+  --color-brand-600: #006e74; /* UST Dark Teal (official) */
+  --color-brand-700: #005a63;
+  --color-brand-800: #004851; /* UST Teal Deep (official) */
+  --color-brand-900: #00343a;
+
+  /* Semantic danger scale, anchored on UST Coral (#e0604a) for alerts/errors.
+     --color-danger-text is a darkened, same-hue variant rather than the raw
+     brand hex: the raw coral is only ~3.5:1 against white as small text, which
+     fails WCAG AA (4.5:1) for body copy -- the darkened variant clears 6.7:1. */
+  --color-danger: #e0604a;
+  --color-danger-text: #aa2e18;
+  --color-danger-bg: #faf1ef;
+  --color-danger-border: #e9afa5;
 
   /* Neutral surface scale */
   --color-surface: #ffffff;
-  --color-surface-muted: #f7f8f8;
+  --color-surface-muted: #eef6f7; /* UST Off White -- the brand's document-page background token. */
   --color-border: #e2e5e4;
 
   /* ---------------------------------------------------------------------
@@ -47,7 +54,7 @@
   --glass-bg-subtle: rgb(255 255 255 / 0.45);
   --glass-border: rgb(255 255 255 / 0.65);
   --glass-border-strong: rgb(255 255 255 / 0.85);
-  --glass-ring: rgb(3 110 116 / 0.08);
+  --glass-ring: rgb(0 110 116 / 0.08);
 
   --glass-blur: 18px;
   --glass-blur-strong: 28px;
@@ -67,7 +74,8 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-source-sans);
+  --font-display: var(--font-source-serif);
   --font-mono: var(--font-geist-mono);
 
   --color-brand-50: var(--color-brand-50);
@@ -80,6 +88,11 @@
   --color-brand-700: var(--color-brand-700);
   --color-brand-800: var(--color-brand-800);
   --color-brand-900: var(--color-brand-900);
+
+  --color-danger: var(--color-danger);
+  --color-danger-text: var(--color-danger-text);
+  --color-danger-bg: var(--color-danger-bg);
+  --color-danger-border: var(--color-danger-border);
 
   --color-surface: var(--color-surface);
   --color-surface-muted: var(--color-surface-muted);
@@ -153,6 +166,17 @@ body {
   background: var(--color-surface-muted);
   color: var(--foreground);
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+/* UST typography: Source Serif 4 for headings, Source Sans 3 (the body default
+   above) for everything else -- the approved Google Font substitutes for the
+   brand's licensed Aptos family. Centralized here rather than per-component so
+   every heading in the app picks it up automatically. */
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display), Georgia, "Times New Roman", serif;
 }
 
 /* Aurora drift. Kept in CSS (not Motion) because it is purely decorative,

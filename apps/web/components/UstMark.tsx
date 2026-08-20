@@ -3,18 +3,12 @@
 import Image from "next/image";
 import { cn } from "@/lib/cn";
 
-// Secondary co-brand mark: the real UST logo asset (apps/web/public/ust_logo.png),
-// used on both the dark top bar and the light login page -- its teal background
-// block matches the brand color on both, so no color/theming props are needed.
-export function UstMark({ className }: { className?: string }) {
-  return (
-    <Image
-      src="/ust_logo.png"
-      alt="UST"
-      title="Built with UST"
-      width={250}
-      height={102}
-      className={cn("h-6 w-auto rounded-sm", className)}
-    />
-  );
+const SOURCES = {
+  white: { src: "/ust_logo_white.png", width: 1363, height: 1154 },
+  black: { src: "/ust_logo_black.png", width: 1391, height: 1131 },
+} as const;
+
+export function UstMark({ variant, className }: { variant: "white" | "black"; className?: string }) {
+  const { src, width, height } = SOURCES[variant];
+  return <Image src={src} alt="UST" width={width} height={height} className={cn("w-auto", className)} />;
 }

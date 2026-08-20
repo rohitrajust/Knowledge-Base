@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo } from "react";
 import { forceCollide, forceX, forceY } from "d3-force";
 import ForceGraph2D, { type ForceGraphMethods, type NodeObject } from "react-force-graph-2d";
 import type { GraphEdge, GraphNode } from "@/lib/types";
@@ -9,18 +9,9 @@ import { KIND_COLORS, type GraphTheme } from "@/components/graph/graphTheme";
 import type { GraphModel } from "@/components/graph/useGraphModel";
 
 type PositionedNode = NodeObject<GraphNode> & { x?: number; y?: number };
-type Box = [number, number, number, number];
 
-/** Zoom below which labels are suppressed entirely and nodes read as plain dots. */
-const LOD_HIDE_LABELS = 0.6;
-/** Zoom above which every node is labelled rather than just the hubs. */
-const LOD_ALL_LABELS = 1.4;
-/** Zoom above which edge relation names appear without needing hover. */
-const LOD_EDGE_LABELS = 1.6;
 /** Zoom above which directional arrowheads are worth drawing. */
 const LOD_ARROWS = 0.9;
-/** How many hubs stay labelled in the middle zoom band. */
-const HUB_LABEL_COUNT = 12;
 
 const DRIFT_FREQ_X = 0.45;
 const DRIFT_FREQ_Y = 0.36;
@@ -82,10 +73,6 @@ function quadTangent(p0: number, c: number, p1: number, t: number): number {
   return 2 * (1 - t) * (c - p0) + 2 * t * (p1 - c);
 }
 
-function intersects(a: Box, b: Box): boolean {
-  return !(a[2] < b[0] || b[2] < a[0] || a[3] < b[1] || b[3] < a[1]);
-}
-
 function truncate(text: string): string {
   return text.length > LABEL_MAX_CHARS ? `${text.slice(0, LABEL_MAX_CHARS - 1)}…` : text;
 }
@@ -108,21 +95,14 @@ export function GraphCanvas({
   onNodeClick,
   onBackgroundClick,
 }: GraphCanvasProps) {
-  // Label collision state, rebuilt each frame. Node labels are drawn in
-  // onRenderFramePost rather than inside nodeCanvasObject so that this component
-  // controls their paint order (hubs first, so they win ties) and so every label
-  // lands on top of every edge instead of being overdrawn by later-painted links.
-  const labelBoxesRef = useRef<Box[]>([]);
+  // Node labels are drawn in onRenderFramePost, rather than inside
+  // nodeCanvasObject, purely so the single hovered label always lands on top of
+  // every edge instead of being overdrawn by later-painted links.
   const nodeById = useMemo(() => {
     const map = new Map<string, PositionedNode>();
     for (const node of graphData.nodes) map.set(String(node.id), node as PositionedNode);
     return map;
   }, [graphData]);
-
-  const hubIds = useMemo(
-    () => new Set(model.byDegreeDesc.slice(0, HUB_LABEL_COUNT).filter((id) => (model.degree.get(id) ?? 0) > 0)),
-    [model]
-  );
 
   function drift(id: string, t: number): { dx: number; dy: number } {
     if (driftAmplitude === 0) return { dx: 0, dy: 0 };
@@ -187,18 +167,6 @@ export function GraphCanvas({
     }
     if (dimmingId() !== null && !active) alpha = Math.min(alpha, DIMMED_LINK_ALPHA);
     return alpha;
-  }
-
-  /** A node keeps its label regardless of zoom when it is being engaged with. */
-  function isForced(id: string): boolean {
-    if (searchMatches.has(id)) return true;
-    const highlightId = activeId();
-    if (highlightId !== null && (highlightId === id || (model.adjacency.get(highlightId)?.has(id) ?? false))) {
-      return true;
-    }
-    // Inside a focused neighbourhood every remaining node is, by definition, what the
-    // user asked to look at -- so they are all labelled regardless of zoom.
-    return focusDepth?.has(id) ?? false;
   }
 
   // --- physics ------------------------------------------------------------
@@ -299,9 +267,6 @@ export function GraphCanvas({
         ctx.fillStyle = color;
         ctx.fill();
       }}
-      onRenderFramePre={() => {
-        labelBoxesRef.current = [];
-      }}
       // Edges are drawn by hand (rather than via linkColor/linkWidth) because
       // force-graph's own link renderer reads the raw, undrifted endpoint positions --
       // so lines would visibly detach from nodes painted at a drifted offset.
@@ -390,40 +355,7 @@ export function GraphCanvas({
           ctx.fill();
         }
 
-        // Edge labels: on demand when the edge is active, automatically once zoomed in
-        // far enough that there is room for them.
-        const showLabel = relation !== "related" && (active || globalScale >= LOD_EDGE_LABELS);
-        if (showLabel && !dimmed) {
-          const mx = quadPoint(sx, cx, ex, 0.5);
-          const my = quadPoint(sy, cy, ey, 0.5);
-          const fontSize = 9 / globalScale;
-          ctx.font = `600 ${fontSize}px ui-sans-serif, system-ui, sans-serif`;
-          const text = meta.label;
-          const w = ctx.measureText(text).width;
-          const padX = 3 / globalScale;
-          const padY = 2 / globalScale;
-          const box: Box = [
-            mx - w / 2 - padX,
-            my - fontSize / 2 - padY,
-            mx + w / 2 + padX,
-            my + fontSize / 2 + padY,
-          ];
-          if (!labelBoxesRef.current.some((b) => intersects(b, box))) {
-            labelBoxesRef.current.push(box);
-            let angle = Math.atan2(quadTangent(sy, cy, ey, 0.5), quadTangent(sx, cx, ex, 0.5));
-            // Keep text upright: without this, any edge running right-to-left renders
-            // its label upside down.
-            if (angle > Math.PI / 2 || angle < -Math.PI / 2) angle += Math.PI;
-            ctx.translate(mx, my);
-            ctx.rotate(angle);
-            ctx.fillStyle = theme.labelBg;
-            ctx.fillRect(-w / 2 - padX, -fontSize / 2 - padY, w + padX * 2, fontSize + padY * 2);
-            ctx.fillStyle = meta.color;
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-            ctx.fillText(text, 0, 0);
-          }
-        }
+        // Relation-name labels are intentionally never drawn on edges, in any state.
         ctx.restore();
       }}
       nodeCanvasObject={(node, ctx) => {
@@ -513,71 +445,44 @@ export function GraphCanvas({
         }
         ctx.restore();
       }}
-      // Node labels are painted last, over everything, in degree order. This is the
-      // single biggest legibility change: before this the graph rendered no labels at
-      // all, so a node's identity could only be discovered by hovering it one at a
-      // time.
+      // Node labels are hidden by default and drawn only for the single node
+      // currently under the cursor -- not by zoom level, node degree, selection,
+      // search matches, or focus mode. hoveredIdRef is cleared the instant the
+      // pointer leaves a node (see GraphViewInner's onNodeHover), so the label
+      // disappears on the very next frame with no extra bookkeeping needed here.
       onRenderFramePost={(ctx, globalScale) => {
-        if (globalScale < LOD_HIDE_LABELS) return;
-        const showAll = globalScale >= LOD_ALL_LABELS;
-        const highlightId = activeId();
+        const id = hoveredIdRef.current;
+        if (id === null) return;
+        const node = nodeById.get(id);
+        if (!node || node.x === undefined || node.y === undefined) return;
+
         const t = performance.now() / 1000;
         const fontSize = 11 / globalScale;
+        const { dx, dy } = drift(id, t);
+        const r = radiusOf(id);
+        const cx = node.x + dx;
+        const cy = node.y + dy + r + fontSize * 0.9;
+
+        const text = truncate(model.titleById.get(id) ?? "Untitled");
+
         ctx.save();
         ctx.font = `500 ${fontSize}px ui-sans-serif, system-ui, sans-serif`;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
+        const w = ctx.measureText(text).width;
+        const padX = 4 / globalScale;
+        const padY = 2.5 / globalScale;
 
-        for (const id of model.byDegreeDesc) {
-          const node = nodeById.get(id);
-          if (!node || node.x === undefined || node.y === undefined) continue;
+        ctx.beginPath();
+        ctx.roundRect(cx - w / 2 - padX, cy - fontSize / 2 - padY, w + padX * 2, fontSize + padY * 2, 3 / globalScale);
+        ctx.fillStyle = theme.labelBg;
+        ctx.fill();
+        ctx.lineWidth = 0.5 / globalScale;
+        ctx.strokeStyle = theme.labelBorder;
+        ctx.stroke();
 
-          const isActive = highlightId === id;
-          // Anything the user is engaging with -- pointed at, adjacent to, or found by
-          // search -- keeps its label regardless of zoom; otherwise the middle band
-          // shows hubs only, which is what keeps a dense graph from becoming a wall of
-          // text.
-          const forced = isForced(id);
-          if (dimmingId() !== null && !forced) continue;
-          if (!forced && !showAll && !hubIds.has(id)) continue;
-          // Labels inherit the node's emphasis: a name floating at full strength over
-          // a node faded to 6% reads as a rendering bug rather than as context.
-          const alpha = searchMatches.has(id) ? 1 : nodeEmphasis(id);
-          if (alpha <= FOCUS_OUT_ALPHA) continue;
-
-          const { dx, dy } = drift(id, t);
-          const r = radiusOf(id);
-          const cx = node.x + dx;
-          const cy = node.y + dy + r + fontSize * 0.9;
-
-          const text = truncate(model.titleById.get(id) ?? "Untitled");
-          const w = ctx.measureText(text).width;
-          const padX = 4 / globalScale;
-          const padY = 2.5 / globalScale;
-          const box: Box = [
-            cx - w / 2 - padX,
-            cy - fontSize / 2 - padY,
-            cx + w / 2 + padX,
-            cy + fontSize / 2 + padY,
-          ];
-          // First-come-wins, and the iteration order is degree-descending, so when two
-          // labels compete the better-connected node keeps its name.
-          if (!forced && labelBoxesRef.current.some((b) => intersects(b, box))) continue;
-          labelBoxesRef.current.push(box);
-
-          ctx.beginPath();
-          ctx.roundRect(box[0], box[1], box[2] - box[0], box[3] - box[1], 3 / globalScale);
-          ctx.fillStyle = theme.labelBg;
-          ctx.fill();
-          ctx.lineWidth = 0.5 / globalScale;
-          ctx.strokeStyle = theme.labelBorder;
-          ctx.stroke();
-
-          ctx.globalAlpha = alpha;
-          ctx.fillStyle = isActive || searchMatches.has(id) ? theme.labelText : theme.labelTextMuted;
-          ctx.fillText(text, cx, cy);
-          ctx.globalAlpha = 1;
-        }
+        ctx.fillStyle = theme.labelText;
+        ctx.fillText(text, cx, cy);
         ctx.restore();
       }}
     />

@@ -9,7 +9,6 @@ import { GraphCanvas } from "@/components/graph/GraphCanvas";
 import { GraphToolbar } from "@/components/graph/GraphToolbar";
 import { GraphFilterPanel, DEFAULT_FILTERS, type GraphFilters } from "@/components/graph/GraphFilterPanel";
 import { GraphLegend } from "@/components/graph/GraphLegend";
-import { GraphMinimap } from "@/components/graph/GraphMinimap";
 import { FocusBreadcrumb, type FocusDepth } from "@/components/graph/FocusBreadcrumb";
 import { NodeTooltip } from "@/components/graph/NodeTooltip";
 import { NodeDetailPanel } from "@/components/graph/NodeDetailPanel";
@@ -346,14 +345,6 @@ export function GraphViewInner({
 
         <div className="pointer-events-auto absolute bottom-4 left-4 flex flex-col gap-2">
           <GraphLegend />
-          {filtered.nodes.length > 0 && (
-            <GraphMinimap
-              nodes={graphData.nodes}
-              fgRef={fgRef}
-              viewWidth={dimensions.width}
-              viewHeight={dimensions.height}
-            />
-          )}
         </div>
       </div>
 

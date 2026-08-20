@@ -13,7 +13,7 @@ export function TopBar() {
   const router = useRouter();
 
   return (
-    <header className="sticky top-0 flex h-14 shrink-0 items-center justify-between border-b border-white/10 bg-brand-800/80 px-4 text-white backdrop-blur-xl backdrop-saturate-150 sm:px-6">
+    <header className="fixed inset-x-0 top-0 z-50 flex h-14 shrink-0 items-center justify-between border-b border-white/10 bg-brand-800/80 px-4 text-white backdrop-blur-xl backdrop-saturate-150 sm:px-6">
       <Link href="/spaces" className="flex items-center gap-2">
         <MnemoLogo />
       </Link>
@@ -31,7 +31,7 @@ export function TopBar() {
           Log out
         </Button>
         <div className="hidden items-center border-l border-white/20 pl-4 sm:flex">
-          <UstMark className="opacity-90" />
+          <UstMark variant="white" className="h-8" />
         </div>
       </div>
     </header>

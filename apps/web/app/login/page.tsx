@@ -119,7 +119,7 @@ export default function LoginPage() {
 
       <ErrorMessage>{error}</ErrorMessage>
       <div className="flex justify-center">
-        <UstMark />
+        <UstMark variant="black" className="h-20" />
       </div>
     </main>
   );
