@@ -44,25 +44,32 @@ uv run python -m app.seed
 uv run uvicorn app.main:app --reload
 ```
 
-Without `uv` -- plain `pip`/`venv` works too, since dependencies are declared in
-standard `pyproject.toml` form:
+Without `uv` -- plain `pip`/`venv` works too, using the pinned `requirements.txt`
+(exported from `uv.lock`, so it always matches what `uv` installs; more portable than
+`pip install -e .` since it doesn't need editable-install/build-isolation support,
+which some locked-down corporate `pip` configs disable):
 
 ```bash
 cd apps/api
 cp .env.example .env
 python3 -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -e .
+pip install -r requirements.txt
 pip install httpx pytest pytest-asyncio   # only needed to run tests
 alembic upgrade head
 python -m app.seed
 uvicorn app.main:app --reload
 ```
 
+Maintainers: regenerate `requirements.txt` whenever `pyproject.toml`'s dependencies
+change, with `uv export --format requirements.txt --no-dev --no-hashes --no-emit-project -o requirements.txt`.
+
 The first install pulls in `sentence-transformers` (and `torch`) for local embeddings --
 a larger, slower install than the rest of the stack, and the first server start
 downloads the `all-MiniLM-L6-v2` model (~90MB) to the local Hugging Face cache. Both are
 one-time costs; expect the very first `uvicorn` start to take longer while it warms the
-model (see `docs/architecture/milestone-1-foundations.md`).
+model (see `docs/architecture/milestone-1-foundations.md`). If your network sits behind
+a TLS-intercepting corporate proxy and this download fails with an SSL error, see
+`HF_SSL_VERIFY` in `apps/api/.env.example`.
 
 If you have existing items from before milestone 4 (or ever change the embedding
 model), backfill their embeddings with a database-owner connection, the same way

@@ -22,6 +22,14 @@ class Settings(BaseSettings):
     embedding_model_name: str = "all-MiniLM-L6-v2"
     embedding_dim: int = 384
 
+    # Escape hatch for corporate networks whose TLS-intercepting proxy issues
+    # certificates the Python trust store doesn't recognize, which otherwise makes the
+    # Hugging Face model download at startup fail with an SSL error. Off by default
+    # (verification stays on) -- only set HF_SSL_VERIFY=false on a trusted local/dev
+    # network; it disables certificate validation for Hugging Face downloads, which
+    # reintroduces MITM risk.
+    hf_ssl_verify: bool = True
+
     # OpenRouter (https://openrouter.ai) is used as a provider-agnostic LLM gateway for
     # grounded Q&A, so the app isn't tied to one vendor's SDK and gets automatic
     # fallback across models. No default model is set deliberately: OpenRouter's catalog

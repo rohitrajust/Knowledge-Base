@@ -26,24 +26,32 @@ uv run python -m app.seed
 uv run uvicorn app.main:app --reload
 ```
 
-Without `uv`:
+Without `uv`, using the pinned `requirements.txt` (exported from `uv.lock`, so it
+always matches what `uv` installs; more portable than `pip install -e .` since it
+doesn't need editable-install/build-isolation support, which some locked-down
+corporate `pip` configs disable):
 
 ```bash
 cd apps/api
 cp .env.example .env
 python3 -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -e .
+pip install -r requirements.txt
 pip install httpx pytest pytest-asyncio   # only needed to run tests
 alembic upgrade head
 python -m app.seed
 uvicorn app.main:app --reload
 ```
 
+Maintainers: regenerate `requirements.txt` whenever `pyproject.toml`'s dependencies
+change, with `uv export --format requirements.txt --no-dev --no-hashes --no-emit-project -o requirements.txt`.
+
 The first install pulls in `sentence-transformers` (and `torch`) for
 local embeddings, and the first server start downloads the `all-MiniLM-L6-v2` model
 (~90MB) to the local Hugging Face cache. Both are one-time costs. `app/main.py`'s
 `lifespan` warms the model at startup (not on first request) so a fresh `uvicorn`
-start pays this cost before reporting healthy, not on the first real request.
+start pays this cost before reporting healthy, not on the first real request. If your
+network sits behind a TLS-intercepting corporate proxy and this download fails with an
+SSL error, see `HF_SSL_VERIFY` below.
 
 Server runs at `http://localhost:8000`; interactive API docs at `/docs`.
 
@@ -59,6 +67,7 @@ Server runs at `http://localhost:8000`; interactive API docs at `/docs`.
 | `cors_allow_origins` | `["http://localhost:3000"]` | |
 | `embedding_model_name` | `all-MiniLM-L6-v2` | Changing this requires a migration updating `items.embedding`'s vector dimension |
 | `embedding_dim` | `384` | |
+| `hf_ssl_verify` | `true` | Set to `false` only on a trusted network behind a TLS-intercepting corporate proxy whose root CA isn't trusted by Python, to work around SSL errors downloading the embedding model. Disables certificate verification for Hugging Face downloads -- do not set outside that scenario |
 | `openrouter_api_key` | `""` | Required for `/ask` and conversation Q&A. Get one at https://openrouter.ai/keys |
 | `openrouter_model` | `""` | No default is shipped -- OpenRouter's model catalog changes over time, so pick a current slug from https://openrouter.ai/models. Without this set, `/ask`/conversations return a clear "not configured" error; every other feature works without it |
 | `openrouter_fallback_models` | `[]` | Optional fallback slugs if the primary model is rate-limited or down |
