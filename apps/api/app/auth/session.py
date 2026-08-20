@@ -17,7 +17,18 @@ async def create_session(db: AsyncSession, user_id: uuid.UUID) -> UserSession:
         expires_at=datetime.now(timezone.utc) + timedelta(seconds=settings.session_ttl_seconds),
     )
     db.add(session)
-    await db.flush()
+    # Committed here rather than left to `get_db`'s teardown commit. A flush alone
+    # makes the row visible only inside this transaction, while the login response --
+    # carrying the Set-Cookie the client is expected to use immediately -- can reach
+    # that client before the teardown commit lands. Any request issued in that window
+    # runs on a *different* pooled connection, cannot see the uncommitted row, and is
+    # rejected with "Session expired or invalid."
+    #
+    # The web app hits this window on every single sign-in: it calls `refresh()`
+    # (GET /auth/me) the instant login resolves. Reproduced at ~4 failures in 5
+    # attempts against a warm server. Committing before the response is built closes
+    # the window entirely; `get_db`'s later commit then becomes a no-op.
+    await db.commit()
     return session
 
 
