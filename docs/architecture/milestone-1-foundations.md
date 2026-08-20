@@ -136,11 +136,13 @@ library directly.
 
 ## Addendum (Milestone 4): embeddings, and a lazy-load-vs-cold-start lesson
 
-`items.embedding` is a nullable `pgvector.sqlalchemy.Vector(384)` column with an `hnsw`
-index (`ix_items_embedding`, `vector_cosine_ops`) -- hnsw over ivfflat because ivfflat
-needs representative data at index-build time to cluster well, while hnsw builds
-incrementally and is fine at MVP table sizes. RLS needed no changes: it's row-level, a
-new column doesn't touch it.
+`items.embedding` is a nullable plain Postgres `float8[]` column (SQLAlchemy
+`ARRAY(Float)`), not pgvector's `Vector` type -- this deliberately avoids requiring the
+`pgvector` extension, which needs superuser/admin rights to install and isn't available
+in every environment (managed databases, locked-down corporate machines). Similarity
+search has no SQL-side ANN index; `app/core/retrieval.py` fetches a space's embedded
+candidates and ranks them by cosine similarity in Python/numpy, which is fine at MVP
+table sizes. RLS needed no changes: it's row-level, a new column doesn't touch it.
 
 Embeddings come from a local `sentence-transformers` model (`all-MiniLM-L6-v2`), loaded
 lazily via an `lru_cache`d `get_model()` in `app/core/embeddings.py` so that admin

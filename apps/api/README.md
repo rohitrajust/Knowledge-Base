@@ -7,12 +7,16 @@ conventions this app is built on (space isolation, RLS, embeddings, memory).
 
 ## Requirements
 
-- Python >=3.12, managed with [`uv`](https://docs.astral.sh/uv/)
-- PostgreSQL with the `pgvector` extension, and a non-superuser `mnemo_app` role
+- Python >=3.12, managed with [`uv`](https://docs.astral.sh/uv/) -- or plain `pip`/`venv`,
+  since dependencies are declared in standard `pyproject.toml` form (see Setup below);
+  useful if `uv` can't be installed (e.g. a locked-down corporate machine)
+- Plain, stock PostgreSQL (no extensions needed) with a non-superuser `mnemo_app` role
   (see root `README.md` -- Postgres Row-Level Security is silently bypassed by
   superusers, so this project cannot run correctly against a superuser connection)
 
 ## Setup
+
+With `uv`:
 
 ```bash
 cd apps/api
@@ -22,7 +26,20 @@ uv run python -m app.seed
 uv run uvicorn app.main:app --reload
 ```
 
-The first `uv sync`/`uv run` pulls in `sentence-transformers` (and `torch`) for
+Without `uv`:
+
+```bash
+cd apps/api
+cp .env.example .env
+python3 -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -e .
+pip install httpx pytest pytest-asyncio   # only needed to run tests
+alembic upgrade head
+python -m app.seed
+uvicorn app.main:app --reload
+```
+
+The first install pulls in `sentence-transformers` (and `torch`) for
 local embeddings, and the first server start downloads the `all-MiniLM-L6-v2` model
 (~90MB) to the local Hugging Face cache. Both are one-time costs. `app/main.py`'s
 `lifespan` warms the model at startup (not on first request) so a fresh `uvicorn`
@@ -59,16 +76,19 @@ RLS correctly blocks the app role from doing that:
 # Backfill embeddings for items created before embeddings existed, or after
 # changing the embedding model
 DATABASE_URL="postgresql+asyncpg://localhost/mnemo_dev" uv run python -m app.backfill_embeddings
+# without uv: DATABASE_URL="postgresql+asyncpg://localhost/mnemo_dev" python -m app.backfill_embeddings
 
 # Physically delete memory summaries past their TTL (they're already filtered out
 # of reads once expired -- this just reclaims storage)
 DATABASE_URL="postgresql+asyncpg://localhost/mnemo_dev" uv run python -m app.cleanup_expired_memories
+# without uv: DATABASE_URL="postgresql+asyncpg://localhost/mnemo_dev" python -m app.cleanup_expired_memories
 ```
 
 ## Testing
 
 ```bash
 DATABASE_URL="postgresql+asyncpg://mnemo_app@localhost/mnemo_test" uv run pytest
+# without uv, in the activated venv: DATABASE_URL="postgresql+asyncpg://mnemo_app@localhost/mnemo_test" pytest
 ```
 
 `tests/test_isolation.py` is the standing cross-space regression suite (app-layer
