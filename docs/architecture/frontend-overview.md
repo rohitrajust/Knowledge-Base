@@ -74,9 +74,10 @@ in sync.
 
 | Path | Contents |
 |---|---|
-| `components/ui/` | Presentational primitives (`Button`, `Card`, `Input`, `Textarea`, `Select`, `Badge`, `EmptyState`, `ErrorMessage`, `LoadingState`, `ListRow`, `MotionList`) |
+| `components/ui/` | Presentational primitives (`Button`, `Card`, `GlassPanel`, `Input`, `Textarea`, `Select`, `Badge`, `EmptyState`, `ErrorMessage`, `LoadingState`, `ListRow`, `MotionList`) |
 | `components/layout/` | `TopBar`, `Sidebar` |
-| `components/` (root) | Domain components: `ItemList`, `ItemCreateForm`, `ItemLinkPicker`, `SuggestedLinks`, `SpaceCreateForm`, `SpaceSwitcher`, `MemberInviteForm`, `GraphView`/`GraphViewInner`, `RequireAuth`, `MnemoLogo`, `UstMark` |
+| `components/graph/` | The knowledge-graph module: `GraphCanvas` (all canvas painting), `GraphToolbar`, `GraphFilterPanel`, `GraphLegend`, `GraphMinimap`, `FocusBreadcrumb`, `NodeTooltip`, `NodeDetailPanel`, plus `useGraphModel` / `graphTheme` / `nodeInfo` |
+| `components/` (root) | Domain components: `ItemList`, `ItemCreateForm`, `ItemLinkPicker`, `SuggestedLinks`, `SpaceCreateForm`, `SpaceSwitcher`, `MemberInviteForm`, `GraphView`/`GraphViewInner`, `AmbientBackground`, `RequireAuth`, `MnemoLogo`, `UstMark` |
 
 Pages under `app/` compose these components and own their own data-fetching
 (`useEffect` + `api.get`), loading/empty/error conditionals, and mutation calls

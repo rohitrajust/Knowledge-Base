@@ -113,7 +113,9 @@ model with a server-side `onupdate` column (see `update_item` in
 
 ## Addendum (Milestone 3): the convention held again, plus a canvas/SSR gotcha
 
-`item_links` (undirected links between two items) followed the same convention as
+`item_links` (at the time, undirected and unlabeled links between two items -- they
+have since gained a `relation` and a `direction`, see
+`docs/architecture/api-reference.md`) followed the same convention as
 `items`: `SpaceScopedMixin`, `ENABLE`/`FORCE ROW LEVEL SECURITY` with all four
 per-command policies, and routes depending on `get_current_space`. The one new backend
 technique: canonical pair ordering via a single `CHECK (item_a_id < item_b_id)`
