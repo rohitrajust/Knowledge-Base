@@ -21,7 +21,7 @@ export function ErrorMessage({ children, className }: { children: ReactNode; cla
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: reduceMotion ? 0 : -motionTokens.distance.sm }}
           transition={{ duration: motionTokens.duration.fast, ease: motionTokens.easing.smooth }}
-          className={cn("text-sm text-red-600", className)}
+          className={cn("text-sm text-danger-text", className)}
         >
           {children}
         </motion.p>

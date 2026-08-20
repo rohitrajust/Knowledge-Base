@@ -65,16 +65,18 @@ here (see `docs/architecture/api-reference.md` for the schemas to mirror).
 
 | Path | Contents |
 |---|---|
-| `components/ui/` | Shared presentational primitives (`Button`, `Card`, `Input`, `Select`, `Badge`, `EmptyState`, `ErrorMessage`, `LoadingState`, `ListRow`, `MotionList`) -- thin styled wrappers over native elements, kept semantic on purpose (see Testing above) |
+| `components/ui/` | Shared presentational primitives (`Button`, `Card`, `GlassPanel`, `Input`, `Select`, `Badge`, `EmptyState`, `ErrorMessage`, `LoadingState`, `ListRow`, `MotionList`) -- thin styled wrappers over native elements, kept semantic on purpose (see Testing above) |
 | `components/layout/` | `TopBar`, `Sidebar` (space-scoped nav shell) |
-| `components/` (root) | Domain components: `ItemList`, `ItemCreateForm`, `ItemLinkPicker`, `SuggestedLinks`, `SpaceCreateForm`, `SpaceSwitcher`, `MemberInviteForm`, `GraphView`/`GraphViewInner`, `RequireAuth` |
-| `lib/` | `api-client.ts`, `types.ts`, `auth-context.tsx`, `cn.ts` (clsx wrapper), `motionTokens.ts`, `text.ts` |
+| `components/graph/` | The knowledge-graph module: `GraphCanvas` (all canvas painting), `GraphToolbar`, `GraphFilterPanel`, `GraphLegend`, `GraphMinimap`, `FocusBreadcrumb`, `NodeTooltip`, `NodeDetailPanel`, plus `useGraphModel` / `graphTheme` / `nodeInfo` |
+| `components/` (root) | Domain components: `ItemList`, `ItemCreateForm`, `ItemLinkPicker`, `SuggestedLinks`, `SpaceCreateForm`, `SpaceSwitcher`, `MemberInviteForm`, `GraphView`/`GraphViewInner`, `AmbientBackground`, `RequireAuth` |
+| `lib/` | `api-client.ts`, `types.ts`, `auth-context.tsx`, `cn.ts` (clsx + tailwind-merge), `motionTokens.ts`, `relations.ts` (relation labels, colours and dash patterns), `text.ts` |
 
 `GraphView`/`GraphViewInner` is a two-component split (`next/dynamic(..., { ssr: false })`)
 because `react-force-graph-2d` touches `window`/canvas at module load time and
 isn't SSR-safe -- any future canvas/WebGL component should follow the same split.
 
-For the design-token system (Tailwind v4 `@theme inline`, the `components/ui/`
-primitive layer, navigation shell, and knowledge-graph rendering details), see
-`docs/architecture/frontend-redesign.md`. For a fuller architecture walkthrough,
+For the design-token system (Tailwind v4 `@theme inline`, the glass token
+vocabulary and utilities, the `components/ui/` primitive layer, navigation shell,
+typed relations, and the knowledge graph's physics / level-of-detail / de-emphasis
+rules), see `docs/architecture/frontend-redesign.md`. For a fuller architecture walkthrough,
 see `docs/architecture/frontend-overview.md`.

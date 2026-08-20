@@ -171,7 +171,7 @@ export default function SpaceDetailPage({ params }: PageProps<'/spaces/[spaceId]
       </section>
 
       {isOwner && (
-        <section className="flex flex-col gap-3 rounded-xl border border-red-200 bg-red-50/40 p-4">
+        <section className="flex flex-col gap-3 rounded-glass border border-red-300/50 bg-red-50/45 p-4 backdrop-blur-md">
           <h2 className="text-sm font-medium text-red-700">Danger zone</h2>
           <p className="text-sm text-gray-600">
             Deleting this space permanently removes it and everything in it -- notes, links,

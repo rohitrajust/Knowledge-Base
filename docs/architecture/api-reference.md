@@ -94,14 +94,44 @@ same request; a `url`-only update on a reference skips re-embedding.
 
 | Method | Path | Auth | Request | Response |
 |---|---|---|---|---|
-| POST | `/links` | member | `{ other_item_id }` | `201` `LinkedItemOut` -- 400 on self-link or duplicate |
+| POST | `/links` | member | `{ other_item_id, relation? }` | `201` `LinkedItemOut` -- 400 on self-link or duplicate, 422 on unknown relation |
 | GET | `/links` | member | -- | `LinkedItemOut[]` (both directions from `item_id`) |
+| PATCH | `/links/{link_id}` | member | `{ relation }` | `LinkedItemOut` -- 404 if the link is not on this item |
 | DELETE | `/links/{link_id}` | member | -- | `204` |
 
-`LinkedItemOut`: `{ link_id, created_at, item: ItemOut }`. Links are undirected;
-the pair is canonically ordered (`item_a_id < item_b_id` by UUID comparison) so a
+`LinkedItemOut`: `{ link_id, created_at, relation, direction_out, item: ItemOut }`.
+
+The pair is canonically ordered (`item_a_id < item_b_id` by UUID comparison) so a
 single `UNIQUE(item_a_id, item_b_id)` constraint rules out duplicates and reverse
 links without app-level dedup logic.
+
+### Relations
+
+`relation` is one of `related` (the default), `references`, `depends_on`,
+`supersedes`, `part_of`. All but `related` are **directed**: "A supersedes B" says
+something different from "B supersedes A".
+
+Direction is stored in a separate `direction` column (`none` / `a_to_b` / `b_to_a`)
+rather than by reordering the pair. Expressing "A supersedes B" as `(a=B, b=A)` would
+have meant abandoning the canonical ordering, and with it the UNIQUE constraint that
+makes reverse-duplicates impossible; keeping the ordering and recording the semantic
+direction alongside it preserves both properties at once.
+
+A link is created *from* `item_id`, so that item becomes the source of a directed
+relation regardless of which canonical column it lands in.
+
+`direction_out` is resolved relative to the item being viewed -- `out`, `in`, or
+`none` -- so a client rendering an item's link list can show "References X" versus
+"Referenced by X" without redoing canonical-order arithmetic.
+
+`PATCH` exists because the UNIQUE pair constraint permits only one link per pair, so
+retyping cannot be expressed as delete-then-recreate without a window in which the
+link does not exist. It recomputes direction from the endpoint the request came
+through, which is also how a directed relation gets flipped: re-issue the same PATCH
+from the other item.
+
+Both columns carry a server default (`related` / `none`), so a client that omits
+`relation` behaves exactly as it did before relations existed.
 
 ## Graph (`/api/v1/spaces/{space_id}/graph`)
 
@@ -109,7 +139,14 @@ links without app-level dedup logic.
 |---|---|---|---|
 | GET | `/graph` | member | `{ nodes: GraphNode[], edges: GraphEdge[] }` |
 
-`GraphNode`: `{ id, title, kind }`. `GraphEdge`: `{ id, source, target }` (item IDs).
+`GraphNode`: `{ id, title, kind }`.
+`GraphEdge`: `{ id, source, target, relation, directed }` (item IDs).
+
+Edges are emitted in **relation order**, not storage order: `source` is the "from" end
+of the relation, so a renderer can draw an arrowhead without knowing anything about
+canonical column ordering. For undirected relations `source`/`target` fall back to
+canonical order and `directed` is `false`.
+
 Recomputed fresh on every request from `items`/`item_links` -- nothing is cached.
 
 ## Search (`/api/v1/spaces/{space_id}/search`)

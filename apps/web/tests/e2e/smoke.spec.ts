@@ -46,14 +46,24 @@ test("login, create space, switch spaces, invite a member, capture and link note
   await expect(titleInput).toHaveValue("Note One (edited)");
 
   await expect(page.getByText("Not linked to anything yet.")).toBeVisible();
-  await page.getByRole("main").getByRole("combobox").selectOption({ label: "Note Two" });
+  // Scoped by accessible name rather than by container: the picker now renders a
+  // relation-type combobox alongside the item one (and one per existing link), so
+  // getByRole("main").getByRole("combobox") is no longer unambiguous. This selector
+  // had already been narrowed once before, when the persistent Sidebar's space
+  // switcher first made the unscoped version ambiguous.
+  await page.getByRole("combobox", { name: "Link to item" }).selectOption({ label: "Note Two" });
+  await page.getByRole("combobox", { name: "Relation type" }).selectOption("references");
   await page.getByRole("button", { name: "Link" }).click();
   await expect(page.getByRole("link", { name: "Note Two" })).toBeVisible();
 
   // The graph page should render a canvas with both linked notes as nodes.
+  // Scoped to the first canvas: the graph now also renders a minimap, so a bare
+  // locator("canvas") matches two elements and trips strict mode. Same situation as
+  // the combobox selectors above -- a new element made a previously unambiguous
+  // selector ambiguous; the assertion's intent is unchanged.
   const spaceUrl = page.url().replace(/\/items\/.*$/, "");
   await page.goto(`${spaceUrl}/graph`);
-  await expect(page.locator("canvas")).toBeVisible();
+  await expect(page.locator("canvas").first()).toBeVisible();
 
   // Semantic search should surface Note Two as the top result for its own title.
   await page.goto(`${spaceUrl}/search`);

@@ -53,7 +53,7 @@ export function ItemCreateForm({
   return (
     <form
       onSubmit={handleSubmit}
-      className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-4 shadow-sm"
+      className="glass flex flex-col gap-3 rounded-glass p-4"
     >
       <div className="flex gap-2">
         <Select value={kind} onChange={(event) => setKind(event.target.value as ItemKind)}>

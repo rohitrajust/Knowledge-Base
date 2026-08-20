@@ -38,6 +38,15 @@ async def seed_users():
 async def clean_db():
     async with engine.begin() as conn:
         await conn.execute(text(f"TRUNCATE {', '.join(CONTENT_TABLES)} RESTART IDENTITY CASCADE"))
+        # Users deliberately survive the truncate above (see CONTENT_TABLES) so the
+        # session-seeded accounts stay loginable -- but users created *by* a test must
+        # not, or signup tests stop being idempotent: they pass once on a virgin
+        # database and fail with "account already exists" on every run after that.
+        # Removing only the non-seeded rows keeps the seeding intent intact.
+        await conn.execute(
+            text("DELETE FROM users WHERE email <> ALL(:seeded)"),
+            {"seeded": [entry["email"] for entry in SEEDED_USERS]},
+        )
     yield
 
 

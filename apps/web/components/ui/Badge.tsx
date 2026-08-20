@@ -5,10 +5,12 @@ import { cn } from "@/lib/cn";
 
 type BadgeVariant = "neutral" | "brand" | "outline";
 
+// Translucent tints rather than flat fills, so a badge sitting on a glass card
+// picks up the aurora behind it instead of punching an opaque hole in the panel.
 const VARIANTS: Record<BadgeVariant, string> = {
-  neutral: "bg-gray-100 text-gray-500",
-  brand: "bg-brand-100 text-brand-700",
-  outline: "border border-border text-gray-500",
+  neutral: "bg-gray-500/10 text-gray-600 ring-1 ring-gray-500/15",
+  brand: "bg-brand-500/12 text-brand-700 ring-1 ring-brand-500/20",
+  outline: "text-gray-600 ring-1 ring-gray-400/40",
 };
 
 export function Badge({
@@ -19,7 +21,7 @@ export function Badge({
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+        "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-wide uppercase backdrop-blur-sm",
         VARIANTS[variant],
         className
       )}

@@ -1,96 +1,36 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
-import { motion } from "motion/react";
-import { X } from "lucide-react";
-import ForceGraph2D, { type ForceGraphMethods, type NodeObject } from "react-force-graph-2d";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { motion, useReducedMotion } from "motion/react";
+import type { ForceGraphMethods, NodeObject } from "react-force-graph-2d";
 import type { GraphNode, GraphEdge, Item } from "@/lib/types";
 import { motionTokens } from "@/lib/motionTokens";
-import { snippet } from "@/lib/text";
-import { Badge } from "@/components/ui/Badge";
-import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
+import { GraphCanvas } from "@/components/graph/GraphCanvas";
+import { GraphToolbar } from "@/components/graph/GraphToolbar";
+import { GraphFilterPanel, DEFAULT_FILTERS, type GraphFilters } from "@/components/graph/GraphFilterPanel";
+import { GraphLegend } from "@/components/graph/GraphLegend";
+import { FocusBreadcrumb, type FocusDepth } from "@/components/graph/FocusBreadcrumb";
+import { NodeTooltip } from "@/components/graph/NodeTooltip";
+import { NodeDetailPanel } from "@/components/graph/NodeDetailPanel";
+import { readGraphTheme, type GraphTheme } from "@/components/graph/graphTheme";
+import { bfsDepth, driftAmplitudeFor, useGraphModel } from "@/components/graph/useGraphModel";
+import { resolveNodeInfo } from "@/components/graph/nodeInfo";
+import { EmptyState } from "@/components/ui/EmptyState";
 
-const KIND_COLORS: Record<GraphNode["kind"], string> = {
-  note: "#2563eb",
-  document: "#16a34a",
-  reference: "#d97706",
-};
+type PositionedNode = NodeObject<GraphNode> & { x?: number; y?: number };
 
-const KIND_LABELS: Record<GraphNode["kind"], string> = {
-  note: "Note",
-  document: "Document",
-  reference: "Reference",
-};
+const TOOLTIP_WIDTH = 272;
+const TOOLTIP_HEIGHT = 170;
+const SEARCH_DEBOUNCE_MS = 180;
 
-const HIGHLIGHT_RING = "#12584f"; // brand-700
-const NEIGHBOR_RING = "#3ba99b"; // brand-400
-const LINK_COLOR = "#c7cdd0";
-const LINK_COLOR_ACTIVE = "#146d62"; // brand-600
-const BASE_RADIUS = 5;
-// Idle drift: how far (px, in graph-space) and how fast nodes float. Large enough
-// to read as "alive" at a glance without nodes visibly leaving their neighborhood.
-const DRIFT_AMPLITUDE = 5;
-const DRIFT_FREQ_X = 0.45;
-const DRIFT_FREQ_Y = 0.36;
-// force-graph repaints its offscreen hit-test ("shadow") canvas on a fixed 800ms
-// throttle (HOVER_CANVAS_THROTTLE_DELAY in force-graph's source), independent of our
-// own per-frame drift animation. If the hit-area were painted at the node's live
-// drifted position (like the visible node is), it would go stale for up to 800ms
-// while the node keeps drifting away from it, causing hover to intermittently miss
-// or flicker depending on the drift phase at the moment of the last shadow-canvas
-// repaint. Painting it at the node's stable (undrifted) base position instead, with
-// a radius that fully covers the drift envelope, makes the hit-area immune to that
-// staleness -- it never needs to "catch up" to the visible node because it already
-// covers every position the node can drift to.
-const POINTER_AREA_RADIUS = BASE_RADIUS + DRIFT_AMPLITUDE + 3;
-const MAX_CONNECTED_TITLES = 3;
-const PULSE_AMPLITUDE = 0.12; // +-12% radius "breathing"
-const PULSE_FREQ = 0.6;
-const DIMMED_ALPHA = 0.22;
-
-// Read once -- this drives a canvas draw loop, not a React re-render, so it doesn't
-// need to be reactive to a live OS-setting change the way a DOM animation would.
-const prefersReducedMotion =
-  typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-
-// Deterministic per-node phase (and a derived frequency multiplier) so each node
-// floats and pulses on its own cycle without looking mechanically synchronized --
-// cheap to recompute per frame for the node counts this app deals with.
-function phaseFor(id: string): number {
-  let h = 0;
-  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0;
-  return ((h >>> 0) % 1000) / 1000 * Math.PI * 2;
-}
-
-function endpointId(endpoint: unknown): string | undefined {
-  if (endpoint == null) return undefined;
-  if (typeof endpoint === "object") return String((endpoint as { id?: unknown }).id);
-  return String(endpoint);
-}
-
-function driftOffset(id: string, t: number): { dx: number; dy: number } {
-  if (prefersReducedMotion) return { dx: 0, dy: 0 };
-  const phase = phaseFor(id);
-  const freqVariance = 0.8 + (phase / (Math.PI * 2)) * 0.4; // ~0.8x - 1.2x per node
-  return {
-    dx: Math.sin(t * DRIFT_FREQ_X * freqVariance + phase) * DRIFT_AMPLITUDE,
-    dy: Math.cos(t * DRIFT_FREQ_Y * freqVariance + phase * 1.7) * DRIFT_AMPLITUDE,
-  };
-}
-
-interface NodeInfo {
-  id: string;
-  title: string;
-  kind: GraphNode["kind"];
-  updatedAt: string | null;
-  connectionCount: number;
-  connectedTitles: string[];
-  hasMoreConnections: boolean;
-  body?: string;
-}
-
+/**
+ * Orchestrates the graph: owns filtering, search, focus and interaction state, and
+ * delegates painting to GraphCanvas.
+ *
+ * Still the target of GraphView's `next/dynamic({ ssr: false })` import, which must
+ * not change -- react-force-graph-2d touches `window` at module load and is not
+ * SSR-safe.
+ */
 export function GraphViewInner({
   spaceId,
   nodes,
@@ -102,41 +42,41 @@ export function GraphViewInner({
   edges: GraphEdge[];
   itemsById: Map<string, Item>;
 }) {
-  const router = useRouter();
-  const fgRef = useRef<ForceGraphMethods<GraphNode, GraphEdge>>(undefined);
+  const fgRef = useRef<ForceGraphMethods<GraphNode, GraphEdge> | undefined>(undefined);
   const containerRef = useRef<HTMLDivElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
+  const reduceMotion = useReducedMotion() ?? false;
 
-  // Hover state used by the canvas render loop lives in a ref, not React state:
-  // nodeCanvasObject/linkCanvasObject are read by force-graph's own render loop
-  // every frame (see autoPauseRedraw below), so a plain mutable ref is enough --
-  // routing hover through setState there would force React to re-render and
-  // rebuild the `graphData` object on every mouse-move.
+  // Hover state used by the canvas render loop lives in a ref, not React state: the
+  // painters are called by force-graph's own loop every frame, so a ref is enough --
+  // routing hover through setState there would rebuild `graphData` on every
+  // mouse-move, which force-graph treats as brand-new data (see the memo below).
   const hoveredIdRef = useRef<string | null>(null);
-  // Holds a reference to the live node object (mutated in place by the physics
-  // engine every tick), not a copy of its x/y -- a frozen {x,y} snapshot taken at
-  // hover-start would drift away from the node's actual drawn position as soon as
-  // the simulation nudges it again, causing the tooltip to visibly detach from the
-  // node it's supposed to be glued to (the same class of stale-coordinate bug
-  // already fixed for edges/hit-testing, just not yet applied here).
-  const hoveredBaseRef = useRef<{ id: string; node: NodeObject<GraphNode> & { x?: number; y?: number } } | null>(null);
+  // Holds the live node object, mutated in place by the physics engine, rather than a
+  // frozen {x,y} snapshot -- a snapshot taken at hover-start drifts away from the
+  // node's drawn position as soon as the simulation nudges it again, detaching the
+  // tooltip from the node it is supposed to be glued to.
+  const hoveredBaseRef = useRef<{ id: string; node: PositionedNode } | null>(null);
 
-  // The hover tooltip and the click-selection panel are both genuinely
-  // React-rendered content, so they're the two pieces of interaction state that
-  // do need to live in React state -- they only change on hover-target/click, not
-  // every animation frame, so this doesn't reintroduce the graphData-churn problem
-  // the ref above exists to avoid.
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [focusId, setFocusId] = useState<string | null>(null);
+  const [focusDepthLevel, setFocusDepthLevel] = useState<FocusDepth>(1);
+  const [filters, setFilters] = useState<GraphFilters>(DEFAULT_FILTERS);
+  const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
-  // ForceGraph2D's width/height props default to window.innerWidth/innerHeight when
-  // omitted -- it does not measure its own container. Without this, the canvas was
-  // sized to the full browser viewport while this component's bordered container
-  // only shows an overflow-hidden crop of it, so the graph's true center (centered
-  // relative to the oversized canvas) fell outside the visible crop, rendering nodes
-  // bunched toward one edge instead of centered. Tracking the container's actual
-  // size and passing it through keeps the canvas -- and therefore the graph's
-  // center -- matched to what's actually visible.
+  // Canvas colours come from the same CSS custom properties as the rest of the app.
+  // A lazy initialiser rather than an effect: this component is only ever reached
+  // through GraphView's `ssr: false` dynamic import, so first render already has a
+  // live document for getComputedStyle.
+  const [theme] = useState<GraphTheme | null>(() => readGraphTheme());
+
+  // ForceGraph2D defaults width/height to the window size rather than measuring its
+  // container, so without this the canvas is sized to the whole viewport while only a
+  // cropped portion is visible -- putting the graph's true centre outside the crop and
+  // bunching nodes against one edge.
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
   useEffect(() => {
     const container = containerRef.current;
@@ -149,64 +89,117 @@ export function GraphViewInner({
     return () => observer.disconnect();
   }, []);
 
-  const adjacency = useMemo(() => {
-    const map = new Map<string, Set<string>>();
-    for (const edge of edges) {
-      if (!map.has(edge.source)) map.set(edge.source, new Set());
-      if (!map.has(edge.target)) map.set(edge.target, new Set());
-      map.get(edge.source)!.add(edge.target);
-      map.get(edge.target)!.add(edge.source);
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedQuery(query.trim()), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(id);
+  }, [query]);
+
+  // --- filtering ----------------------------------------------------------
+  // Applied in dependency order: kinds gate nodes, relations gate edges, and only
+  // then can a connection count be computed -- so the minimum-connections and
+  // hide-unconnected controls act on what is actually still on screen rather than on
+  // the unfiltered graph.
+  const filtered = useMemo(() => {
+    const kindOk = nodes.filter((n) => filters.kinds.has(n.kind));
+    let visibleIds = new Set(kindOk.map((n) => n.id));
+    let visibleEdges = edges.filter(
+      (e) => visibleIds.has(e.source) && visibleIds.has(e.target) && filters.relations.has(e.relation)
+    );
+
+    const minDegree = Math.max(filters.minConnections, filters.hideOrphans ? 1 : 0);
+    let visibleNodes = kindOk;
+    if (minDegree > 0) {
+      const degree = new Map<string, number>();
+      for (const e of visibleEdges) {
+        degree.set(e.source, (degree.get(e.source) ?? 0) + 1);
+        degree.set(e.target, (degree.get(e.target) ?? 0) + 1);
+      }
+      visibleNodes = kindOk.filter((n) => (degree.get(n.id) ?? 0) >= minDegree);
+      visibleIds = new Set(visibleNodes.map((n) => n.id));
+      visibleEdges = visibleEdges.filter((e) => visibleIds.has(e.source) && visibleIds.has(e.target));
     }
-    return map;
-  }, [edges]);
 
-  const titleById = useMemo(() => new Map(nodes.map((n) => [n.id, n.title])), [nodes]);
+    return { nodes: visibleNodes, edges: visibleEdges };
+  }, [nodes, edges, filters]);
 
-  // force-graph re-heats the entire physics simulation AND wipes its shadow-canvas
-  // hit-test color registry (see CanvasForceGraph's graphData onChange in
-  // force-graph's source: `state.forceLayout.stop().alpha(1)`, and
-  // `!d.hasOwnProperty('__indexColor') -> state.colorTracker.reset()`) any time it
-  // receives a graphData object containing node/link objects it hasn't seen before
-  // -- which a fresh `{ ...node }` copy always is, even when the underlying data is
-  // unchanged. Building this inline in JSX (recreated on every render) meant every
-  // hover/selection state change -- including the hover state changes this
-  // component itself triggers -- silently restarted the simulation and reassigned
-  // hit-test colors, which is why nodes never visually settled and hover/click
-  // detection intermittently missed. Memoizing on [nodes, edges] keeps the same
-  // object identities across renders that don't actually change the graph's data.
-  const graphData = useMemo(
-    () => ({
-      nodes: nodes.map((node) => ({ ...node })),
-      links: edges.map((edge) => ({ ...edge })),
-    }),
-    [nodes, edges]
-  );
+  const model = useGraphModel(filtered.nodes, filtered.edges);
+  const driftAmplitude = reduceMotion ? 0 : driftAmplitudeFor(filtered.nodes.length);
 
-  // Single source of truth for both the hover tooltip and the click panel, so
-  // their content can never drift apart -- backed by the items list the graph
-  // page already fetches (alongside /graph) purely to get each item's body/dates
-  // for these UI reads; the graph endpoint itself only ever returns id/title/kind.
-  function resolveNodeInfo(id: string): NodeInfo {
-    const item = itemsById.get(id);
-    const connections = Array.from(adjacency.get(id) ?? []);
-    const connectedTitles = connections.slice(0, MAX_CONNECTED_TITLES).map((cid) => titleById.get(cid) ?? "Untitled");
+  // force-graph re-heats the whole simulation AND wipes its hit-test colour registry
+  // whenever it receives node/link objects it has not seen before -- which a fresh
+  // `{ ...node }` copy always is, even when the underlying data is identical. Building
+  // this inline in JSX meant every hover silently restarted the physics and
+  // reassigned hit-test colours, which is why nodes never settled and clicks
+  // intermittently missed.
+  //
+  // Nodes are ordered by degree so hub labels are placed first and win collisions.
+  const graphData = useMemo(() => {
+    const order = new Map(model.byDegreeDesc.map((id, i) => [id, i]));
     return {
-      id,
-      title: item?.title ?? titleById.get(id) ?? "Untitled",
-      kind: item?.kind ?? "note",
-      updatedAt: item?.updated_at ?? null,
-      connectionCount: connections.length,
-      connectedTitles,
-      hasMoreConnections: connections.length > MAX_CONNECTED_TITLES,
-      body: item?.body,
+      nodes: [...filtered.nodes]
+        .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0))
+        .map((node) => ({ ...node })),
+      links: filtered.edges.map((edge) => ({ ...edge })),
     };
-  }
+  }, [filtered, model]);
+
+  const searchMatches = useMemo(() => {
+    if (!debouncedQuery) return new Set<string>();
+    const needle = debouncedQuery.toLowerCase();
+    return new Set(
+      filtered.nodes.filter((n) => n.title.toLowerCase().includes(needle)).map((n) => n.id)
+    );
+  }, [debouncedQuery, filtered.nodes]);
+
+  // Depth 0 in the UI means "all", which is expressed as a BFS bounded by the node
+  // count -- every reachable node then lands in the map and nothing is dimmed out.
+  const focusDepth = useMemo(() => {
+    if (!focusId || !model.adjacency.has(focusId)) return null;
+    const max = focusDepthLevel === 0 ? filtered.nodes.length : focusDepthLevel;
+    return bfsDepth(model.adjacency, focusId, max);
+  }, [focusId, focusDepthLevel, model, filtered.nodes.length]);
+
+  // --- view controls ------------------------------------------------------
+  const zoomBy = useCallback((factor: number) => {
+    const fg = fgRef.current;
+    if (!fg) return;
+    fg.zoom(fg.zoom() * factor, 300);
+  }, []);
+
+  const fit = useCallback(() => fgRef.current?.zoomToFit(500, 80), []);
+
+  const resetView = useCallback(() => {
+    setFocusId(null);
+    setSelectedId(null);
+    setQuery("");
+    setFilters({ ...DEFAULT_FILTERS, kinds: new Set(DEFAULT_FILTERS.kinds), relations: new Set(DEFAULT_FILTERS.relations) });
+    fgRef.current?.zoomToFit(500, 80);
+  }, []);
+
+  const toggleFullscreen = useCallback(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    if (document.fullscreenElement) void document.exitFullscreen();
+    else void el.requestFullscreen?.();
+  }, []);
+
+  useEffect(() => {
+    const onChange = () => setIsFullscreen(document.fullscreenElement !== null);
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
+
+  const centerOnFirstMatch = useCallback(() => {
+    const fg = fgRef.current;
+    if (!fg || searchMatches.size === 0) return;
+    const first = graphData.nodes.find((n) => searchMatches.has(n.id)) as PositionedNode | undefined;
+    if (!first || first.x === undefined || first.y === undefined) return;
+    fg.centerAt(first.x, first.y, 600);
+    fg.zoom(Math.max(fg.zoom(), 2.2), 600);
+  }, [graphData, searchMatches]);
 
   // Keeps the tooltip glued to its node's actual (drifting) screen position every
-  // frame, without a React re-render: it recomputes the same drift offset used in
-  // nodeCanvasObject from the node's base graph-space position (captured once at
-  // hover-start, stable once the physics simulation has settled) and converts to
-  // screen pixels via force-graph's own pan/zoom-aware coordinate transform.
+  // frame without a React re-render.
   useEffect(() => {
     if (!hoveredNodeId) return;
     let rafId: number;
@@ -217,10 +210,17 @@ export function GraphViewInner({
       const container = containerRef.current;
       if (base && fg && tooltip && container && base.node.x !== undefined && base.node.y !== undefined) {
         const t = performance.now() / 1000;
-        const { dx, dy } = driftOffset(base.id, t);
+        let dx = 0;
+        let dy = 0;
+        if (driftAmplitude > 0) {
+          const phase = model.phase.get(base.id) ?? 0;
+          const variance = 0.8 + (phase / (Math.PI * 2)) * 0.4;
+          dx = Math.sin(t * 0.45 * variance + phase) * driftAmplitude;
+          dy = Math.cos(t * 0.36 * variance + phase * 1.7) * driftAmplitude;
+        }
         const screen = fg.graph2ScreenCoords(base.node.x + dx, base.node.y + dy);
-        const maxLeft = Math.max(8, container.clientWidth - 272);
-        const maxTop = Math.max(8, container.clientHeight - 160);
+        const maxLeft = Math.max(8, container.clientWidth - TOOLTIP_WIDTH);
+        const maxTop = Math.max(8, container.clientHeight - TOOLTIP_HEIGHT);
         const left = Math.min(Math.max(screen.x + 14, 8), maxLeft);
         const top = Math.min(Math.max(screen.y - 14, 8), maxTop);
         tooltip.style.transform = `translate(${left}px, ${top}px)`;
@@ -229,217 +229,130 @@ export function GraphViewInner({
     };
     rafId = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafId);
-  }, [hoveredNodeId]);
+  }, [hoveredNodeId, driftAmplitude, model]);
 
-  // Edges/neighbors highlight for whichever node is active -- hovered takes
-  // precedence, falling back to the clicked/selected node so its connections
-  // stay clearly visible even after the mouse moves away from it.
-  function activeHighlightId(): string | null {
-    return hoveredIdRef.current ?? selectedId;
-  }
+  // Esc unwinds one layer at a time -- focus first, then selection -- so it never
+  // discards more context than the user asked it to.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (focusId) setFocusId(null);
+      else if (selectedId) setSelectedId(null);
+      else if (query) setQuery("");
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [focusId, selectedId, query]);
 
-  function isLinkHighlighted(link: unknown): boolean {
-    const highlightId = activeHighlightId();
-    if (!highlightId) return false;
-    return (
-      endpointId((link as { source?: unknown }).source) === highlightId ||
-      endpointId((link as { target?: unknown }).target) === highlightId
-    );
-  }
+  // force-graph's redraw gate is `!autoPauseRedraw || needsRedraw || isEngineRunning()`,
+  // so `autoPauseRedraw={true}` *pauses* repainting once the engine settles. The
+  // previous value (`!prefersReducedMotion`) was inverted: for every user who had NOT
+  // asked for reduced motion it froze the canvas, silently disabling the animation the
+  // file exists to draw. Repainting is now tied to whether anything is actually
+  // animating, so a settled graph with nothing hovered stops burning frames.
+  const animating =
+    !reduceMotion &&
+    (driftAmplitude > 0 || hoveredNodeId !== null || selectedId !== null || searchMatches.size > 0);
+
+  const hoveredInfo = hoveredNodeId ? resolveNodeInfo(hoveredNodeId, model, itemsById) : null;
+  const selectedInfo = selectedId ? resolveNodeInfo(selectedId, model, itemsById) : null;
+  const focusTitle = focusId ? (model.titleById.get(focusId) ?? "Untitled") : "";
 
   return (
     <motion.div
       ref={containerRef}
-      initial={prefersReducedMotion ? undefined : { opacity: 0, scale: 0.98 }}
+      initial={reduceMotion ? undefined : { opacity: 0, scale: 0.99 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ duration: motionTokens.duration.slow, ease: motionTokens.easing.smooth }}
-      className="relative h-[600px] w-full overflow-hidden rounded-xl border border-border bg-surface"
+      className="relative h-full w-full overflow-hidden bg-transparent"
     >
-      <ForceGraph2D
-        ref={fgRef}
-        graphData={graphData}
-        nodeId="id"
-        nodeRelSize={BASE_RADIUS}
-        width={dimensions.width}
-        height={dimensions.height}
-        // Keeps the canvas repainting every animation frame even once the d3-force
-        // simulation has settled, so the drift/pulse below stay visible without
-        // ever mutating real node.x/node.y -- the physics engine itself is untouched.
-        autoPauseRedraw={!prefersReducedMotion}
-        onNodeHover={(node) => {
-          const n = node as (NodeObject<GraphNode> & { x?: number; y?: number }) | null;
-          hoveredIdRef.current = n ? String(n.id) : null;
-          hoveredBaseRef.current = n ? { id: String(n.id), node: n } : null;
-          setHoveredNodeId(n ? String(n.id) : null);
-        }}
-        onNodeClick={(node) => setSelectedId(String((node as GraphNode).id))}
-        onBackgroundClick={() => setSelectedId(null)}
-        // Force-graph's hit-testing runs on a separate invisible "shadow canvas"
-        // that it only repaints on an internal 800ms throttle (see POINTER_AREA_RADIUS
-        // comment above) -- painting the hit-area at the node's live drifted position
-        // would go stale between repaints as the node keeps drifting, causing hover to
-        // intermittently miss. Painting it at the node's stable base x/y with a radius
-        // that covers the full drift envelope sidesteps that staleness entirely: the
-        // hit-area already covers wherever the node visually drifts to, whenever the
-        // shadow canvas last happened to repaint.
-        nodePointerAreaPaint={(node, color, ctx) => {
-          const n = node as NodeObject<GraphNode> & { x: number; y: number };
-          if (n.x === undefined || n.y === undefined) return;
-          ctx.beginPath();
-          ctx.arc(n.x, n.y, POINTER_AREA_RADIUS, 0, 2 * Math.PI);
-          ctx.fillStyle = color;
-          ctx.fill();
-        }}
-        // Edges are drawn entirely here rather than via linkColor/linkWidth/
-        // linkDirectionalParticles*: force-graph's defaults for all of those draw
-        // from the raw, undrifted link.source.x/y and link.target.x/y, which would
-        // make nodes visually detach from their edges (the node is painted at its
-        // drifted position, but the edge would stay pinned to the old coordinates).
-        // Recomputing the same driftOffset() for both endpoints here means a line
-        // can never terminate anywhere other than where its node is actually drawn
-        // that frame -- and the traveling particle is hand-interpolated along that
-        // same drifted segment, so it can't separate from the line either.
-        linkCanvasObjectMode={() => "replace"}
-        linkCanvasObject={(link, ctx) => {
-          const source = (link as { source?: unknown }).source;
-          const target = (link as { target?: unknown }).target;
-          if (typeof source !== "object" || source === null || typeof target !== "object" || target === null) return;
-          const s = source as { id?: unknown; x?: number; y?: number };
-          const e = target as { id?: unknown; x?: number; y?: number };
-          if (s.x === undefined || s.y === undefined || e.x === undefined || e.y === undefined) return;
+      {theme && dimensions.width > 0 && filtered.nodes.length > 0 && (
+        <GraphCanvas
+          graphData={graphData}
+          model={model}
+          theme={theme}
+          width={dimensions.width}
+          height={dimensions.height}
+          fgRef={fgRef}
+          hoveredIdRef={hoveredIdRef}
+          selectedId={selectedId}
+          focusDepth={focusDepth}
+          searchMatches={searchMatches}
+          driftAmplitude={driftAmplitude}
+          reduceMotion={reduceMotion}
+          autoPauseRedraw={!animating}
+          onNodeHover={(node) => {
+            hoveredIdRef.current = node ? String(node.id) : null;
+            hoveredBaseRef.current = node ? { id: String(node.id), node } : null;
+            setHoveredNodeId(node ? String(node.id) : null);
+          }}
+          onNodeClick={(node) => {
+            const id = String(node.id);
+            setSelectedId(id);
+            setFocusId(id);
+          }}
+          onBackgroundClick={() => {
+            setSelectedId(null);
+            setFocusId(null);
+          }}
+        />
+      )}
 
-          const t = performance.now() / 1000;
-          const sourceDrift = driftOffset(String(s.id), t);
-          const targetDrift = driftOffset(String(e.id), t);
-          const sx = s.x + sourceDrift.dx;
-          const sy = s.y + sourceDrift.dy;
-          const ex = e.x + targetDrift.dx;
-          const ey = e.y + targetDrift.dy;
+      {filtered.nodes.length === 0 && (
+        <div className="flex h-full items-center justify-center p-8">
+          <EmptyState variant="block" className="max-w-sm">
+            No items match these filters.
+          </EmptyState>
+        </div>
+      )}
 
-          const active = isLinkHighlighted(link);
-          const color = active ? LINK_COLOR_ACTIVE : LINK_COLOR;
+      <div className="pointer-events-none absolute inset-0 z-10">
+        <div className="pointer-events-auto absolute top-4 left-4">
+          <GraphToolbar
+            spaceId={spaceId}
+            query={query}
+            onQueryChange={setQuery}
+            matchCount={debouncedQuery ? searchMatches.size : null}
+            onSubmitSearch={centerOnFirstMatch}
+            onZoomIn={() => zoomBy(1.4)}
+            onZoomOut={() => zoomBy(1 / 1.4)}
+            onFit={fit}
+            onReset={resetView}
+            onToggleFullscreen={toggleFullscreen}
+            isFullscreen={isFullscreen}
+          />
+        </div>
 
-          ctx.beginPath();
-          ctx.moveTo(sx, sy);
-          ctx.lineTo(ex, ey);
-          ctx.strokeStyle = color;
-          ctx.lineWidth = active ? 2.5 : 1;
-          ctx.stroke();
+        <div className="pointer-events-auto absolute top-4 right-4">
+          <GraphFilterPanel
+            filters={filters}
+            onChange={setFilters}
+            counts={{ nodes: filtered.nodes.length, edges: filtered.edges.length, total: nodes.length }}
+          />
+        </div>
 
-          if (!prefersReducedMotion) {
-            // Cycles per second -- matches the pace of the previous native
-            // linkDirectionalParticles config (~0.24/s default, ~0.48/s active).
-            const speed = active ? 0.48 : 0.24;
-            const progress = (t * speed) % 1;
-            ctx.beginPath();
-            ctx.arc(sx + (ex - sx) * progress, sy + (ey - sy) * progress, active ? 2.2 : 1.4, 0, 2 * Math.PI);
-            ctx.fillStyle = color;
-            ctx.fill();
-          }
-        }}
-        nodeCanvasObject={(node, ctx) => {
-          const n = node as NodeObject<GraphNode> & { x: number; y: number };
-          if (n.x === undefined || n.y === undefined) return;
-
-          const isHovered = hoveredIdRef.current === n.id;
-          const isSelected = selectedId === n.id;
-          const highlightId = activeHighlightId();
-          const isHighlighted = highlightId === n.id;
-          const isNeighbor = highlightId !== null && !isHighlighted && (adjacency.get(highlightId)?.has(String(n.id)) ?? false);
-          const dimmed = highlightId !== null && !isHighlighted && !isNeighbor;
-
-          const t = performance.now() / 1000;
-          const { dx, dy } = driftOffset(String(n.id), t);
-          const drawX = n.x + dx;
-          const drawY = n.y + dy;
-
-          const pulse = prefersReducedMotion
-            ? 0
-            : Math.sin(t * PULSE_FREQ + phaseFor(String(n.id)) * 2.3) * PULSE_AMPLITUDE;
-          const baseRadius = isHovered ? BASE_RADIUS * 1.4 : isSelected ? BASE_RADIUS * 1.6 : BASE_RADIUS;
-          const radius = baseRadius * (1 + pulse);
-
-          ctx.globalAlpha = dimmed ? DIMMED_ALPHA : 1;
-          ctx.beginPath();
-          ctx.arc(drawX, drawY, radius, 0, 2 * Math.PI);
-          ctx.fillStyle = KIND_COLORS[n.kind];
-          ctx.fill();
-
-          if (isHovered || isSelected) {
-            ctx.lineWidth = 1.75;
-            ctx.strokeStyle = HIGHLIGHT_RING;
-            ctx.stroke();
-          } else if (isNeighbor) {
-            ctx.lineWidth = 1.25;
-            ctx.strokeStyle = NEIGHBOR_RING;
-            ctx.stroke();
-          }
-          ctx.globalAlpha = 1;
-        }}
-      />
-
-      {hoveredNodeId && hoveredNodeId !== selectedId && (() => {
-        const info = resolveNodeInfo(hoveredNodeId);
-        return (
-          <div
-            ref={tooltipRef}
-            className="pointer-events-none absolute top-0 left-0 z-10 w-64 rounded-lg border border-border bg-surface p-3 text-sm shadow-lg"
-          >
-            <div className="flex items-center justify-between gap-2">
-              <span className="font-semibold text-gray-900">{info.title}</span>
-              <Badge>{KIND_LABELS[info.kind]}</Badge>
-            </div>
-            {info.updatedAt && (
-              <p className="mt-1 text-xs text-gray-400">Updated {new Date(info.updatedAt).toLocaleDateString()}</p>
-            )}
-            <p className="mt-1 text-xs text-gray-500">
-              {info.connectionCount} {info.connectionCount === 1 ? "connection" : "connections"}
-              {info.connectedTitles.length > 0 && `: ${info.connectedTitles.join(", ")}`}
-              {info.hasMoreConnections && ` +${info.connectionCount - info.connectedTitles.length} more`}
-            </p>
-            {info.body && <p className="mt-2 text-xs text-gray-600">{snippet(info.body, 120)}</p>}
+        {focusId && (
+          <div className="pointer-events-auto absolute top-4 left-1/2 -translate-x-1/2">
+            <FocusBreadcrumb
+              title={focusTitle}
+              depth={focusDepthLevel}
+              onDepthChange={setFocusDepthLevel}
+              visibleCount={focusDepth?.size ?? 0}
+              onClear={() => setFocusId(null)}
+            />
           </div>
-        );
-      })()}
+        )}
 
-      {selectedId && (() => {
-        const info = resolveNodeInfo(selectedId);
-        return (
-          <Card className="absolute bottom-3 right-3 z-20 w-72">
-            <div className="flex items-start justify-between gap-2">
-              <span className="font-semibold text-gray-900">{info.title}</span>
-              <button
-                type="button"
-                onClick={() => setSelectedId(null)}
-                aria-label="Close"
-                className="shrink-0 text-gray-400 hover:text-gray-700"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="mt-1 flex items-center gap-2">
-              <Badge>{KIND_LABELS[info.kind]}</Badge>
-              {info.updatedAt && (
-                <span className="text-xs text-gray-400">Updated {new Date(info.updatedAt).toLocaleDateString()}</span>
-              )}
-            </div>
-            <p className="mt-2 text-xs text-gray-500">
-              {info.connectionCount} {info.connectionCount === 1 ? "connection" : "connections"}
-              {info.connectedTitles.length > 0 && `: ${info.connectedTitles.join(", ")}`}
-              {info.hasMoreConnections && ` +${info.connectionCount - info.connectedTitles.length} more`}
-            </p>
-            {info.body && <p className="mt-2 text-xs text-gray-600">{snippet(info.body, 300)}</p>}
-            <Button
-              variant="primary"
-              size="sm"
-              className="mt-3 w-full"
-              onClick={() => router.push(`/spaces/${spaceId}/items/${selectedId}`)}
-            >
-              Open note →
-            </Button>
-          </Card>
-        );
-      })()}
+        <div className="pointer-events-auto absolute bottom-4 left-4 flex flex-col gap-2">
+          <GraphLegend />
+        </div>
+      </div>
+
+      {hoveredInfo && hoveredNodeId !== selectedId && <NodeTooltip ref={tooltipRef} info={hoveredInfo} />}
+
+      {selectedInfo && (
+        <NodeDetailPanel info={selectedInfo} spaceId={spaceId} onClose={() => setSelectedId(null)} />
+      )}
     </motion.div>
   );
 }
