@@ -14,7 +14,7 @@ per-app READMEs (`apps/api/README.md`, `apps/web/README.md`).
 
 ## Local development
 
-Requires PostgreSQL (with the `pgvector` extension available) running locally.
+Requires PostgreSQL (plain, stock -- no extensions needed) running locally.
 
 ### One-time database setup
 
@@ -34,6 +34,8 @@ role is required (Postgres Row-Level Security is silently bypassed by superusers
 
 ### Backend (`apps/api`)
 
+With [`uv`](https://docs.astral.sh/uv/):
+
 ```bash
 cd apps/api
 cp .env.example .env
@@ -42,11 +44,25 @@ uv run python -m app.seed
 uv run uvicorn app.main:app --reload
 ```
 
-The first `uv sync`/`uv run` pulls in `sentence-transformers` (and `torch`) for local
-embeddings -- a larger, slower install than the rest of the stack, and the first server
-start downloads the `all-MiniLM-L6-v2` model (~90MB) to the local Hugging Face cache.
-Both are one-time costs; expect the very first `uvicorn` start to take longer while it
-warms the model (see `docs/architecture/milestone-1-foundations.md`).
+Without `uv` -- plain `pip`/`venv` works too, since dependencies are declared in
+standard `pyproject.toml` form:
+
+```bash
+cd apps/api
+cp .env.example .env
+python3 -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -e .
+pip install httpx pytest pytest-asyncio   # only needed to run tests
+alembic upgrade head
+python -m app.seed
+uvicorn app.main:app --reload
+```
+
+The first install pulls in `sentence-transformers` (and `torch`) for local embeddings --
+a larger, slower install than the rest of the stack, and the first server start
+downloads the `all-MiniLM-L6-v2` model (~90MB) to the local Hugging Face cache. Both are
+one-time costs; expect the very first `uvicorn` start to take longer while it warms the
+model (see `docs/architecture/milestone-1-foundations.md`).
 
 If you have existing items from before milestone 4 (or ever change the embedding
 model), backfill their embeddings with a database-owner connection, the same way
@@ -54,9 +70,12 @@ migrations run:
 
 ```bash
 DATABASE_URL="postgresql+asyncpg://localhost/mnemo_dev" uv run python -m app.backfill_embeddings
+# without uv: DATABASE_URL="postgresql+asyncpg://localhost/mnemo_dev" python -m app.backfill_embeddings
 ```
 
 Run tests: `DATABASE_URL="postgresql+asyncpg://mnemo_app@localhost/mnemo_test" uv run pytest`
+(or, without `uv`, activate the venv above and run
+`DATABASE_URL="postgresql+asyncpg://mnemo_app@localhost/mnemo_test" pytest`).
 
 Grounded Q&A (`/ask` and conversations) needs an OpenRouter API key and model to work:
 set `OPENROUTER_API_KEY` and `OPENROUTER_MODEL` (and optionally `OPENROUTER_FALLBACK_MODELS`)
@@ -72,6 +91,7 @@ periodically with a database-owner connection, the same way as the embeddings ba
 
 ```bash
 DATABASE_URL="postgresql+asyncpg://localhost/mnemo_dev" uv run python -m app.cleanup_expired_memories
+# without uv: DATABASE_URL="postgresql+asyncpg://localhost/mnemo_dev" python -m app.cleanup_expired_memories
 ```
 
 ### Frontend (`apps/web`)

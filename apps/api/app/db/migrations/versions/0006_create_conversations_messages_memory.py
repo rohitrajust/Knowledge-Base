@@ -7,12 +7,6 @@ Create Date: 2026-08-16 15:46:30.908186
 Same RLS convention as every prior content table (0003/0004/0005): ENABLE/FORCE ROW
 LEVEL SECURITY + 4 per-command policies keyed on
 NULLIF(current_setting('app.current_space_id', true), '')::uuid.
-
-Note: autogenerate incorrectly flagged `items`' hnsw vector index (created via raw SQL
-in 0005, not declared at the ORM/Index level) as "removed" and wanted to drop/recreate
-it here. That's a false positive from diffing a raw-SQL-created index against ORM
-model state -- those lines were removed from this migration; the hnsw index is
-untouched.
 """
 from typing import Sequence, Union
 

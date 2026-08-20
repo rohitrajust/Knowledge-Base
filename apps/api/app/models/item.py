@@ -1,12 +1,10 @@
 import uuid
 from datetime import datetime
 
-from pgvector.sqlalchemy import Vector
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, String, Text, func
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+from sqlalchemy import CheckConstraint, DateTime, Float, ForeignKey, String, Text, func
+from sqlalchemy.dialects.postgresql import ARRAY, UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.config import get_settings
 from app.db.base import Base
 from app.models.mixins import SpaceScopedMixin
 
@@ -31,9 +29,9 @@ class Item(Base, SpaceScopedMixin):
     # Nullable: items created before milestone 4's migration (or if embedding generation
     # is ever skipped) have no embedding until app/backfill_embeddings.py runs. Search
     # (app/api/v1/search.py) explicitly excludes NULL embeddings rather than erroring.
-    embedding: Mapped[list[float] | None] = mapped_column(
-        Vector(get_settings().embedding_dim), nullable=True
-    )
+    # Plain float array, not pgvector's Vector type -- similarity is computed in Python
+    # (app/core/retrieval.py) so the pgvector extension is never required.
+    embedding: Mapped[list[float] | None] = mapped_column(ARRAY(Float), nullable=True)
     created_by: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

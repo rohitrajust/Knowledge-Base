@@ -1,4 +1,4 @@
-"""enable pgvector and rls
+"""enable rls
 
 Revision ID: cb12c490573d
 Revises: 2bd2e510e76f
@@ -42,8 +42,6 @@ CURRENT_SPACE_ID = "NULLIF(current_setting('app.current_space_id', true), '')::u
 
 
 def upgrade() -> None:
-    op.execute("CREATE EXTENSION IF NOT EXISTS vector")
-
     # --- spaces: membership-keyed SELECT, open INSERT (any authenticated user may
     # create a space; the app assigns the creator as owner in the same transaction) ---
     op.execute("ALTER TABLE spaces ENABLE ROW LEVEL SECURITY")
@@ -109,5 +107,3 @@ def downgrade() -> None:
     op.execute("DROP POLICY IF EXISTS spaces_member_select ON spaces")
     op.execute("ALTER TABLE spaces NO FORCE ROW LEVEL SECURITY")
     op.execute("ALTER TABLE spaces DISABLE ROW LEVEL SECURITY")
-
-    op.execute("DROP EXTENSION IF EXISTS vector")
