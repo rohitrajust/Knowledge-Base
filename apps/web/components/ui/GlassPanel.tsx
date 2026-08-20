@@ -1,6 +1,6 @@
 "use client";
 
-import type { HTMLAttributes } from "react";
+import type { ComponentPropsWithRef } from "react";
 import { cn } from "@/lib/cn";
 
 type GlassVariant = "subtle" | "default" | "strong";
@@ -30,7 +30,7 @@ export function GlassPanel({
   elevated = false,
   className,
   ...props
-}: HTMLAttributes<HTMLDivElement> & { variant?: GlassVariant; elevated?: boolean }) {
+}: ComponentPropsWithRef<"div"> & { variant?: GlassVariant; elevated?: boolean }) {
   return (
     <div
       className={cn("rounded-glass", VARIANTS[variant], elevated && "shadow-glass-lg", className)}
