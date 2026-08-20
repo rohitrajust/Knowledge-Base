@@ -41,9 +41,17 @@ export interface Item {
   updated_at: string;
 }
 
+/** Mirrors RelationType in apps/api/app/schemas/link.py. */
+export type RelationType = "related" | "references" | "depends_on" | "supersedes" | "part_of";
+
+/** Whether a relation points away from, toward, or neither, the item being viewed. */
+export type RelationDirectionOut = "out" | "in" | "none";
+
 export interface LinkedItem {
   link_id: string;
   created_at: string;
+  relation: RelationType;
+  direction_out: RelationDirectionOut;
   item: Item;
 }
 
@@ -55,8 +63,12 @@ export interface GraphNode {
 
 export interface GraphEdge {
   id: string;
+  /** The "from" end of the relation -- not necessarily canonical storage order. */
   source: string;
   target: string;
+  relation: RelationType;
+  /** False for `related`, whose endpoints are interchangeable; no arrowhead. */
+  directed: boolean;
 }
 
 export interface GraphData {
