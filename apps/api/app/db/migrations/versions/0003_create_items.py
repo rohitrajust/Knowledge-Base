@@ -4,7 +4,7 @@ Revision ID: 7dede18c8a60
 Revises: cb12c490573d
 Create Date: 2026-08-16 14:03:41.662753
 
-`items` is the first real content table (see docs/architecture/milestone-1-foundations.md
+`items` is the first real content table (see README.md's "Isolation and auth conventions"
 for the space_id/RLS convention this follows). Unlike `spaces`/`space_memberships`,
 which only needed SELECT+INSERT policies, `items` needs all four commands since members
 can read, create, edit, and delete freely -- RLS denies-by-default per command, so a

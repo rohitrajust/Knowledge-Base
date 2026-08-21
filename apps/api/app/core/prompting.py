@@ -9,7 +9,7 @@ from app.models.item import Item
 # new question or an end-of-conversation summary, regardless of how long the
 # conversation has actually grown -- this bounds token usage per LLM call at a fixed
 # ceiling instead of letting it grow linearly with conversation length. See
-# docs/architecture/milestone-1-foundations.md for the reasoning.
+# README.md's "Isolation and auth conventions" for the reasoning.
 MAX_HISTORY_MESSAGES = 20
 
 SYSTEM_PROMPT = (

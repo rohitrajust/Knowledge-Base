@@ -1,4 +1,4 @@
-"""Local embedding generation (see docs/architecture/milestone-1-foundations.md for why
+"""Local embedding generation (see README.md's "Isolation and auth conventions" for why
 a local sentence-transformers model was chosen over a hosted embeddings API).
 
 `SentenceTransformer.encode()` is a synchronous, CPU-bound call -- awaiting it directly

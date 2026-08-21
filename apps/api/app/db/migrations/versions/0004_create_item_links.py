@@ -6,7 +6,7 @@ Create Date: 2026-08-16 14:20:19.170489
 
 Same convention as `items` (0003): RLS enabled+forced with all four command policies
 keyed on `NULLIF(current_setting('app.current_space_id', true), '')::uuid`. See
-docs/architecture/milestone-1-foundations.md for the rationale behind NULLIF and FORCE.
+README.md's "Isolation and auth conventions" for the rationale behind NULLIF and FORCE.
 """
 from typing import Sequence, Union
 

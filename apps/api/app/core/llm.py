@@ -6,7 +6,7 @@ knows about OpenRouter specifically -- everything else in the app calls
 
 Every automated test mocks `generate_completion` directly rather than exercising this
 module's real client, keeping the test suite free, fast, and deterministic (consistent
-with the rest of this project -- see docs/architecture/milestone-1-foundations.md).
+with the rest of this project -- see README.md's "Isolation and auth conventions").
 """
 
 from functools import lru_cache

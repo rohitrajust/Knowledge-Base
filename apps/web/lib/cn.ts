@@ -5,7 +5,7 @@ import { extendTailwindMerge } from "tailwind-merge";
 // primitive *appended* rather than overrode -- conflicts then resolved by
 // generated-stylesheet order, not by argument order. That made every
 // `<Card className="rounded-none">`-style override a coin flip (documented as a
-// known trap in docs/architecture/frontend-redesign.md). twMerge makes the last
+// known trap in README.md's "Design system"). twMerge makes the last
 // conflicting utility win, which is what every call site already assumed.
 //
 // The three glass utilities are custom `@utility` classes twMerge has no built-in
