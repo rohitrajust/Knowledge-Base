@@ -14,7 +14,7 @@ class MemorySummary(Base, SpaceScopedMixin):
     ended (see app/api/v1/conversations.py and app/core/prompting.py:SUMMARY_SYSTEM_PROMPT
     for the anti-hallucination guardrail). Shared at the space level -- visible to every
     member of the space, not just whoever's conversation produced it (see
-    docs/architecture/milestone-1-foundations.md). Forgotten via automatic expiry:
+    README.md's "Isolation and auth conventions"). Forgotten via automatic expiry:
     `expires_at` is checked at every read (app/api/v1/memory.py, app/api/v1/conversations.py),
     and app/cleanup_expired_memories.py physically deletes expired rows.
     """

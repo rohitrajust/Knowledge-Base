@@ -16,7 +16,7 @@ class Settings(BaseSettings):
 
     cors_allow_origins: list[str] = ["http://localhost:3000"]
 
-    # Local, no-API-key embedding model (see docs/architecture/milestone-1-foundations.md
+    # Local, no-API-key embedding model (see README.md's "Isolation and auth conventions"
     # for why local was chosen over a hosted embeddings API). Changing this requires a
     # migration to update the `items.embedding` column's dimension to match.
     embedding_model_name: str = "all-MiniLM-L6-v2"
@@ -41,7 +41,7 @@ class Settings(BaseSettings):
 
     # How long a memory summary (app/models/memory.py) stays surfaced before automatic
     # expiry -- the "forgetting" mechanism for persistent memory. Deliberately a fixed
-    # window from creation, no reinforcement/decay (see docs/architecture/milestone-1-foundations.md).
+    # window from creation, no reinforcement/decay (see README.md's "Isolation and auth conventions").
     memory_ttl_days: int = 30
 
 
