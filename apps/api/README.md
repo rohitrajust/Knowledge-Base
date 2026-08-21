@@ -7,29 +7,16 @@ conventions this app is built on (space isolation, RLS, embeddings, memory).
 
 ## Requirements
 
-- Python >=3.12, managed with [`uv`](https://docs.astral.sh/uv/) -- or plain `pip`/`venv`,
-  since dependencies are declared in standard `pyproject.toml` form (see Setup below);
-  useful if `uv` can't be installed (e.g. a locked-down corporate machine)
-- Plain, stock PostgreSQL (no extensions needed) with a non-superuser `mnemo_app` role
-  (see root `README.md` -- Postgres Row-Level Security is silently bypassed by
-  superusers, so this project cannot run correctly against a superuser connection)
+- Python >=3.12, with dependencies installed via plain `pip`/`venv` (see Setup below)
+- PostgreSQL 18, plain and stock (no extensions needed), with a non-superuser
+  `mnemo_app` role (see root `README.md` -- Postgres Row-Level Security is silently
+  bypassed by superusers, so this project cannot run correctly against a superuser
+  connection)
 
 ## Setup
 
-With `uv`:
-
-```bash
-cd apps/api
-cp .env.example .env
-uv run alembic upgrade head
-uv run python -m app.seed
-uv run uvicorn app.main:app --reload
-```
-
-Without `uv`, using the pinned `requirements.txt` (exported from `uv.lock`, so it
-always matches what `uv` installs; more portable than `pip install -e .` since it
-doesn't need editable-install/build-isolation support, which some locked-down
-corporate `pip` configs disable):
+For installing Python/PostgreSQL 18 from scratch and creating the database, see
+[`docs/SETUP.md`](../../docs/SETUP.md). Once those are in place:
 
 ```bash
 cd apps/api
@@ -42,8 +29,9 @@ python -m app.seed
 uvicorn app.main:app --reload
 ```
 
-Maintainers: regenerate `requirements.txt` whenever `pyproject.toml`'s dependencies
-change, with `uv export --format requirements.txt --no-dev --no-hashes --no-emit-project -o requirements.txt`.
+`requirements.txt` is the pinned dependency list matching `pyproject.toml`;
+maintainers update it by hand (or with `pip freeze` from an up-to-date venv)
+whenever a dependency in `pyproject.toml` changes.
 
 The first install pulls in `sentence-transformers` (and `torch`) for
 local embeddings, and the first server start downloads the `all-MiniLM-L6-v2` model
@@ -84,20 +72,19 @@ RLS correctly blocks the app role from doing that:
 ```bash
 # Backfill embeddings for items created before embeddings existed, or after
 # changing the embedding model
-DATABASE_URL="postgresql+asyncpg://localhost/mnemo_dev" uv run python -m app.backfill_embeddings
-# without uv: DATABASE_URL="postgresql+asyncpg://localhost/mnemo_dev" python -m app.backfill_embeddings
+DATABASE_URL="postgresql+asyncpg://localhost/mnemo_dev" python -m app.backfill_embeddings
 
 # Physically delete memory summaries past their TTL (they're already filtered out
 # of reads once expired -- this just reclaims storage)
-DATABASE_URL="postgresql+asyncpg://localhost/mnemo_dev" uv run python -m app.cleanup_expired_memories
-# without uv: DATABASE_URL="postgresql+asyncpg://localhost/mnemo_dev" python -m app.cleanup_expired_memories
+DATABASE_URL="postgresql+asyncpg://localhost/mnemo_dev" python -m app.cleanup_expired_memories
 ```
 
 ## Testing
 
+In the activated venv:
+
 ```bash
-DATABASE_URL="postgresql+asyncpg://mnemo_app@localhost/mnemo_test" uv run pytest
-# without uv, in the activated venv: DATABASE_URL="postgresql+asyncpg://mnemo_app@localhost/mnemo_test" pytest
+DATABASE_URL="postgresql+asyncpg://mnemo_app@localhost/mnemo_test" pytest
 ```
 
 `tests/test_isolation.py` is the standing cross-space regression suite (app-layer

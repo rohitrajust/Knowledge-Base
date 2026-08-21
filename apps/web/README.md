@@ -1,7 +1,8 @@
 # Mnemo Web
 
-Next.js (App Router) frontend for Mnemo. See the root `README.md` for full-stack
-local setup and `docs/architecture/` for design-system and route conventions.
+Next.js (App Router) frontend for Mnemo. For full-stack local setup (including
+PostgreSQL and the backend), see [`docs/SETUP.md`](../../docs/SETUP.md); for
+design-system and route conventions, see `docs/architecture/`.
 
 ## Setup
 

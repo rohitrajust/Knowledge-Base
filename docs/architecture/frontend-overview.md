@@ -102,4 +102,4 @@ smoke suite.
   routing/middleware layer.
 
 These are documented here as explicit MVP boundaries, not silently-accumulated
-debt -- see `.claude/prds/mnemo.prd.md` for the project's overall scope.
+debt.
