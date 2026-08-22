@@ -39,6 +39,11 @@ class Settings(BaseSettings):
     openrouter_model: str = ""
     openrouter_fallback_models: list[str] = []
 
+    # Generous ceiling on generated answer length. Grounded Mnemo answers stay well
+    # below it; the cap only bounds pathological runaway generations that would
+    # otherwise stretch wall-clock latency indefinitely. Set to 0 to disable entirely.
+    openrouter_max_tokens: int | None = 2048
+
     # How long a memory summary (app/models/memory.py) stays surfaced before automatic
     # expiry -- the "forgetting" mechanism for persistent memory. Deliberately a fixed
     # window from creation, no reinforcement/decay (see README.md's "Isolation and auth conventions").

@@ -98,3 +98,21 @@ async def test_any_member_can_edit_and_delete_not_just_owner(client):
 
     delete_response = await client.delete(f"/api/v1/spaces/{space_id}/items/{item['id']}")
     assert delete_response.status_code == 204
+
+
+async def test_create_item_strips_title_and_rejects_blank(client):
+    await login_as(client, "alice@mnemo.dev")
+    space_id = await _make_space(client)
+
+    # Surrounding whitespace is stripped rather than stored.
+    padded = await client.post(
+        f"/api/v1/spaces/{space_id}/items", json={"kind": "note", "title": "  Padded  "}
+    )
+    assert padded.status_code == 201
+    assert padded.json()["title"] == "Padded"
+
+    # Whitespace-only titles fail validation instead of creating a blank row.
+    blank = await client.post(
+        f"/api/v1/spaces/{space_id}/items", json={"kind": "note", "title": "   "}
+    )
+    assert blank.status_code == 422

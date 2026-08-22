@@ -34,8 +34,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    // Initial session probe. The state updates happen inside the promise chain,
+    // not synchronously in the effect body; `active` guards against a late
+    // resolve overwriting a newer state after an unmount/remount cycle.
+    let active = true;
+    api
+      .get<MeResponse>("/api/v1/auth/me")
+      .then((me) => {
+        if (!active) return;
+        setUser(me.user);
+        setLoading(false);
+      })
+      .catch(() => {
+        if (!active) return;
+        setUser(null);
+        setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   return <AuthContext.Provider value={{ user, loading, refresh, logout }}>{children}</AuthContext.Provider>;
 }

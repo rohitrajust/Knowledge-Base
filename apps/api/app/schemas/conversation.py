@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.schemas.item import ItemKind
 
@@ -22,6 +22,16 @@ class MessageSource(BaseModel):
 class MessageCreate(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
 
+    @field_validator("question")
+    @classmethod
+    def strip_and_reject_blank(cls, value: str) -> str:
+        # Same rule as AskRequest: whitespace-only questions would ground an
+        # answer in arbitrary nearest-neighbor items.
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("question must not be blank")
+        return stripped
+
 
 class MessageOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -31,6 +41,13 @@ class MessageOut(BaseModel):
     content: str
     sources: list[MessageSource] | None = None
     created_at: datetime
+
+
+class ConversationEndedOut(BaseModel):
+    """Body of the 202 returned by POST .../end -- the end state is persisted
+    immediately, while the durable-memory summary trails asynchronously."""
+
+    status: Literal["ending"] = "ending"
 
 
 class ConversationCreate(BaseModel):

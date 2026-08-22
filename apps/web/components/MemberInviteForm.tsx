@@ -24,7 +24,7 @@ export function MemberInviteForm({
     setSubmitting(true);
     setError(null);
     try {
-      const membership = await api.post<Membership>(`/api/v1/spaces/${spaceId}/members`, { email });
+      const membership = await api.post<Membership>(`/api/v1/spaces/${spaceId}/members`, { email: email.trim() });
       setEmail("");
       onInvited(membership);
     } catch (err) {

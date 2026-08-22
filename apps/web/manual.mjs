@@ -1,0 +1,12 @@
+import { chromium } from 'playwright';
+const b=await chromium.launch(); const p=await b.newPage();
+await p.goto('http://127.0.0.1:3004/login');
+await p.waitForTimeout(2000);
+console.log(await p.locator('form').innerHTML());
+await p.getByLabel('Email').fill('alice@mnemo.dev');
+await p.getByLabel('Password').fill('mnemo-dev-password');
+console.log('values', await p.getByLabel('Email').inputValue(), await p.getByLabel('Password').inputValue());
+await p.locator('form').getByRole('button', { name: 'Sign in' }).click();
+await p.waitForTimeout(3000);
+console.log('url',p.url(), await p.locator('body').innerText());
+await b.close();
