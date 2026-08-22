@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { api, ApiError } from "@/lib/api-client";
 import type { Item, ItemKind } from "@/lib/types";
 import { Input } from "@/components/ui/Input";
@@ -8,6 +9,7 @@ import { Textarea } from "@/components/ui/Textarea";
 import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
 import { ErrorMessage } from "@/components/ui/ErrorMessage";
+import { motionTokens } from "@/lib/motionTokens";
 
 export function ItemCreateForm({
   spaceId,
@@ -22,6 +24,7 @@ export function ItemCreateForm({
   const [url, setUrl] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const reduceMotion = useReducedMotion();
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -35,7 +38,7 @@ export function ItemCreateForm({
     try {
       const item = await api.post<Item>(`/api/v1/spaces/${spaceId}/items`, {
         kind,
-        title,
+        title: title.trim(),
         body,
         url: url.trim() || undefined,
       });
@@ -68,9 +71,20 @@ export function ItemCreateForm({
           className="flex-1"
         />
       </div>
-      {kind === "reference" && (
-        <Input value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://..." />
-      )}
+      <AnimatePresence initial={false}>
+        {kind === "reference" && (
+          <motion.div
+            key="reference-url"
+            initial={reduceMotion ? false : { opacity: 0, height: 0, marginBottom: "-12px" }}
+            animate={{ opacity: 1, height: "auto", marginBottom: 0 }}
+            exit={reduceMotion ? { opacity: 0 } : { opacity: 0, height: 0, marginBottom: "-12px" }}
+            transition={{ duration: motionTokens.duration.fast, ease: motionTokens.easing.smooth }}
+            className="overflow-hidden"
+          >
+            <Input value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://..." />
+          </motion.div>
+        )}
+      </AnimatePresence>
       <Textarea
         value={body}
         onChange={(event) => setBody(event.target.value)}

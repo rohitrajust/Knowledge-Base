@@ -18,7 +18,7 @@ export function SpaceCreateForm({ onCreated }: { onCreated: (space: Space) => vo
     setSubmitting(true);
     setError(null);
     try {
-      const space = await api.post<Space>("/api/v1/spaces", { name });
+      const space = await api.post<Space>("/api/v1/spaces", { name: name.trim() });
       setName("");
       onCreated(space);
     } catch (err) {

@@ -34,20 +34,29 @@ export default function SpaceDetailPage({ params }: PageProps<'/spaces/[spaceId]
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
-    setError(null);
+    // No synchronous state resets here: this page remounts on every navigation
+    // (route templates), so all state starts fresh. `active` guards against a
+    // late resolve overwriting a newer mount's data.
+    let active = true;
     Promise.all([
       api.get<Space>(`/api/v1/spaces/${spaceId}`),
       api.get<Membership[]>(`/api/v1/spaces/${spaceId}/members`),
       api.get<Item[]>(`/api/v1/spaces/${spaceId}/items`),
     ])
       .then(([spaceDetail, memberList, itemList]) => {
+        if (!active) return;
         setSpace(spaceDetail);
         setMembers(memberList);
         setItems(itemList);
+        setError(null);
       })
-      .catch((err) =>
-        setError(err instanceof ApiError ? err.message : "Failed to load this space.")
-      );
+      .catch((err) => {
+        if (!active) return;
+        setError(err instanceof ApiError ? err.message : "Failed to load this space.");
+      });
+    return () => {
+      active = false;
+    };
   }, [spaceId]);
 
   const myMembership = members.find((m) => m.user_id === user?.id);

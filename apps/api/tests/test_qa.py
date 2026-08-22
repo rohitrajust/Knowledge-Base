@@ -53,3 +53,19 @@ async def test_ask_surfaces_upstream_failure_as_502(client):
 
     assert response.status_code == 502
     assert response.json()["error"]["code"] == "upstream_error"
+
+async def test_ask_rejects_whitespace_only_question(client):
+    """A blank question would embed garbage and retrieve arbitrary items as
+    "context" -- it must 422 before touching the embedding model or LLM."""
+    await login_as(client, "alice@mnemo.dev")
+    space_id = (await client.post("/api/v1/spaces", json={"name": "Blank QA"})).json()["id"]
+    await client.post(
+        f"/api/v1/spaces/{space_id}/items",
+        json={"kind": "note", "title": "Something"},
+    )
+
+    with patch("app.api.v1.qa.generate_completion", new_callable=AsyncMock) as mock_generate:
+        response = await client.post(f"/api/v1/spaces/{space_id}/ask", json={"question": "   \t\n"})
+
+    assert response.status_code == 422
+    mock_generate.assert_not_awaited()

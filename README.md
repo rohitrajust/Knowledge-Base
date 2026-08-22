@@ -305,7 +305,8 @@ For anything else, see [Backend architecture](#backend-architecture) and
 | `hf_ssl_verify` | `true` | Set to `false` only on a trusted network behind a TLS-intercepting corporate proxy whose root CA isn't trusted by Python, to work around SSL errors downloading the embedding model. Disables certificate verification for Hugging Face downloads -- do not set outside that scenario |
 | `openrouter_api_key` | `""` | Required for `/ask` and conversation Q&A. Get one at https://openrouter.ai/keys |
 | `openrouter_model` | `""` | No default is shipped -- OpenRouter's model catalog changes over time, so pick a current slug from https://openrouter.ai/models. Without this set, `/ask`/conversations return a clear "not configured" error; every other feature works without it |
-| `openrouter_fallback_models` | `[]` | Optional fallback slugs if the primary model is rate-limited or down |
+| `openrouter_fallback_models` | `[]` | Optional fallback slugs if the primary model is rate-limited or down. Set a genuinely different model -- listing the primary again just retries it |
+| `openrouter_max_tokens` | `2048` | Generous ceiling on generated answer length; only clips pathological runaway outputs. Set to `0` to disable |
 | `memory_ttl_days` | `30` | How long an end-of-conversation memory summary stays surfaced before automatic expiry |
 
 See `apps/api/app/config.py` for the full `Settings` model.
@@ -815,6 +816,7 @@ returns `[]` without a DB query. Backed by
 | Method | Path | Auth | Request | Response |
 |---|---|---|---|---|
 | POST | `/ask` | member | `{ question (1-2000 chars) }` | `{ answer, sources: SearchResult[] }` |
+| POST | `/ask/stream` | member | `{ question (1-2000 chars) }` | NDJSON event stream (below) |
 
 One-shot, no conversation history. Retrieves top 8 items by embedding
 similarity; if none are found, returns a fixed "no relevant information"
@@ -823,6 +825,14 @@ the model invent an ungrounded answer. Requires
 `OPENROUTER_API_KEY`/`OPENROUTER_MODEL` to be set (see
 [Environment variables](#environment-variables) above); otherwise fails with
 a clear "not configured" error.
+
+`/stream` returns the identical prompt and answer as an
+`application/x-ndjson` stream so clients can render tokens as they arrive:
+one JSON object per line, in order -- `{"type":"sources","sources":[...]}`
+first (retrieval finishes long before generation), then `"delta"` events
+carrying incremental answer text, then a final `{"type":"done"}`. Upstream
+failures mid-stream emit one `{"type":"error","error":{...}}` event with
+the standard error envelope and close the stream.
 
 #### Conversations (`/api/v1/spaces/{space_id}/conversations`)
 
@@ -833,21 +843,27 @@ a clear "not configured" error.
 | GET | `/conversations/{id}` | member | -- | `ConversationDetailOut` (adds `messages: MessageOut[]`) |
 | DELETE | `/conversations/{id}` | member | -- | `204` |
 | POST | `/conversations/{id}/messages` | member | `{ question (1-2000 chars) }` | `201` `MessageOut` (the assistant's reply) |
-| POST | `/conversations/{id}/end` | member | -- | `MemoryOut \| null` |
+| POST | `/conversations/{id}/messages/stream` | member | `{ question (1-2000 chars) }` | NDJSON event stream (`sources` -> `delta`* -> `done`; same shape as `/ask/stream`, but `done` carries the persisted assistant `MessageOut`) |
+| POST | `/conversations/{id}/end` | member | -- | `202` `{ "status": "ending" }` |
 
-Posting a message stores the user message, retrieves grounding context (same
-retrieval as `/ask`), pulls in any active space-level memory summaries, and
-feeds the LLM up to the most recent `MAX_HISTORY_MESSAGES` (20) prior
-messages as history -- a fixed ceiling regardless of how long the
-conversation has grown. `MessageOut.sources` is a JSONB snapshot (`item_id`,
-`title`, `kind`, `score`) taken at answer time, not a live join, so history
-still renders correctly if a cited item is later deleted.
+Posting a message stores the user message durably **before** generation (so an
+upstream failure costs the answer, not the question), retrieves grounding
+context (same retrieval as `/ask`, with the query embedding computed while the
+DB queries run rather than strictly before them), pulls in any active
+space-level memory summaries, and feeds the LLM up to the most recent
+`MAX_HISTORY_MESSAGES` (20) prior messages as history -- a fixed ceiling
+regardless of how long the conversation has grown. `MessageOut.sources` is a
+JSONB snapshot (`item_id`, `title`, `kind`, `score`) taken at answer time, not
+a live join, so history still renders correctly if a cited item is later
+deleted.
 
-Ending a conversation asks the LLM to summarize it into durable facts under a
-prompt that explicitly forbids inventing facts not in the transcript and must
-respond with the literal sentinel `NONE` when nothing is worth remembering --
-`end` returns `null` in that case, or if the conversation has no messages.
-Summaries expire `MEMORY_TTL_DAYS` (default 30) after creation.
+Ending a conversation marks it ended immediately and returns `202`; the
+summary is then produced by a background task that asks the LLM to distill it
+into durable facts under a prompt that explicitly forbids inventing facts not
+in the transcript and must respond with the literal sentinel `NONE` when
+nothing is worth remembering -- no memory row is created in that case, or when
+the conversation has no messages. Summaries expire `MEMORY_TTL_DAYS`
+(default 30) after creation.
 
 #### Memory (`/api/v1/spaces/{space_id}/memory`)
 

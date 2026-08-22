@@ -1,10 +1,11 @@
 "use client";
 
-import { use, useEffect, useState, type FormEvent } from "react";
+import { use, useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { api, ApiError } from "@/lib/api-client";
-import type { ConversationDetail, Message, MemorySummary } from "@/lib/types";
+import { api, ApiError, postStream } from "@/lib/api-client";
+import type { ConversationDetail, Message, MessageSource } from "@/lib/types";
+import { createDeltaFlusher } from "@/lib/stream";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { LoadingState } from "@/components/ui/LoadingState";
@@ -22,17 +23,31 @@ export default function ConversationThreadPage({
   const [sending, setSending] = useState(false);
   const [ending, setEnding] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The in-flight assistant reply, rendered token-by-token while the stream runs.
+  const [streamingReply, setStreamingReply] = useState<{ content: string; sources: MessageSource[] } | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     api
       .get<ConversationDetail>(`/api/v1/spaces/${spaceId}/conversations/${conversationId}`)
       .then(setConversation)
       .catch((err) => setError(err instanceof ApiError ? err.message : "Failed to load this conversation."));
+    return () => abortRef.current?.abort();
   }, [spaceId, conversationId]);
+
+  async function refreshConversation() {
+    try {
+      setConversation(
+        await api.get<ConversationDetail>(`/api/v1/spaces/${spaceId}/conversations/${conversationId}`)
+      );
+    } catch {
+      setError("Failed to reload this conversation.");
+    }
+  }
 
   async function handleAsk(event: FormEvent) {
     event.preventDefault();
-    if (!question.trim() || !conversation) return;
+    if (!question.trim() || !conversation || sending) return;
     const questionText = question;
     setQuestion("");
     setSending(true);
@@ -46,18 +61,62 @@ export default function ConversationThreadPage({
       created_at: new Date().toISOString(),
     };
     setConversation({ ...conversation, messages: [...conversation.messages, userMessage] });
+    setStreamingReply({ content: "", sources: [] });
+
+    // Token chunks arrive faster than React should re-render; coalesce them.
+    const flusher = createDeltaFlusher((chunk) => {
+      setStreamingReply((prev) => (prev ? { ...prev, content: prev.content + chunk } : prev));
+    });
+    const controller = new AbortController();
+    abortRef.current = controller;
+    // Held in an object because the assignment happens inside the event callback;
+    // TS cannot narrow a bare `let` across that boundary.
+    const doneRef: { message: Message | null } = { message: null };
 
     try {
-      const assistantMessage = await api.post<Message>(
-        `/api/v1/spaces/${spaceId}/conversations/${conversationId}/messages`,
-        { question: questionText }
+      await postStream(
+        `/api/v1/spaces/${spaceId}/conversations/${conversationId}/messages/stream`,
+        { question: questionText },
+        (chatEvent) => {
+          if (chatEvent.type === "sources") {
+            const sources = chatEvent.sources as MessageSource[];
+            setStreamingReply((prev) => (prev ? { ...prev, sources } : prev));
+          } else if (chatEvent.type === "delta") {
+            flusher.push(chatEvent.text);
+          } else if (chatEvent.type === "done") {
+            doneRef.message = chatEvent.message ?? null;
+          } else {
+            throw new ApiError(502, chatEvent.error.code, chatEvent.error.message);
+          }
+        },
+        controller.signal
       );
-      setConversation((prev) =>
-        prev ? { ...prev, messages: [...prev.messages, assistantMessage] } : prev
-      );
+      flusher.flushNow();
+      if (doneRef.message) {
+        const persisted = doneRef.message;
+        setConversation((prev) =>
+          prev ? { ...prev, messages: [...prev.messages, persisted] } : prev
+        );
+      } else {
+        // No canonical row arrived (e.g. aborted client-side); the server still
+        // persisted the full answer, so resync rather than guess.
+        await refreshConversation();
+      }
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to get an answer.");
+      // The user turn is already durable server-side and a completed answer is
+      // persisted even after an abort -- resync instead of dropping state.
+      if (controller.signal.aborted) {
+        // User pressed Stop; the server still persisted the full answer.
+      } else if (err instanceof ApiError) {
+        setError(err.message);
+      } else {
+        setError("Failed to get an answer.");
+      }
+      await refreshConversation();
     } finally {
+      flusher.dispose();
+      abortRef.current = null;
+      setStreamingReply(null);
       setSending(false);
     }
   }
@@ -66,7 +125,9 @@ export default function ConversationThreadPage({
     setEnding(true);
     setError(null);
     try {
-      await api.post<MemorySummary | null>(`/api/v1/spaces/${spaceId}/conversations/${conversationId}/end`);
+      // Returns 202 immediately; the memory summary trails in a background task and
+      // shows up on the memory page when ready.
+      await api.post<{ status: string }>(`/api/v1/spaces/${spaceId}/conversations/${conversationId}/end`);
       router.push(`/spaces/${spaceId}/conversations`);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not end this conversation.");
@@ -113,20 +174,24 @@ export default function ConversationThreadPage({
             <p className="text-xs uppercase tracking-wide text-gray-400">{message.role}</p>
             <p className="mt-1 whitespace-pre-wrap text-sm text-gray-900">{message.content}</p>
             {message.sources && message.sources.length > 0 && (
-              <div className="mt-2 flex flex-col gap-1 border-t border-gray-900/8 pt-2">
-                {message.sources.map((source, index) => (
-                  <Link
-                    key={source.item_id}
-                    href={`/spaces/${spaceId}/items/${source.item_id}`}
-                    className="text-xs text-brand-700 hover:underline"
-                  >
-                    [{index + 1}] {source.title}
-                  </Link>
-                ))}
-              </div>
+              <MessageSources spaceId={spaceId} sources={message.sources} />
             )}
           </div>
         ))}
+
+        {streamingReply && (
+          <div className="rounded-xl border border-white/70 bg-white/80 px-4 py-3 backdrop-blur-md">
+            <p className="text-xs uppercase tracking-wide text-gray-400">assistant</p>
+            <p className="mt-1 whitespace-pre-wrap text-sm text-gray-900">
+              {streamingReply.content}
+              <span aria-hidden className="animate-pulse text-gray-400">▍</span>
+            </p>
+            {/* Sources render the moment retrieval finishes -- long before the answer */}
+            {streamingReply.sources.length > 0 && (
+              <MessageSources spaceId={spaceId} sources={streamingReply.sources} />
+            )}
+          </div>
+        )}
       </div>
 
       {!conversation.ended_at && (
@@ -136,10 +201,15 @@ export default function ConversationThreadPage({
             onChange={(event) => setQuestion(event.target.value)}
             placeholder="Ask a follow-up..."
             className="flex-1"
+            maxLength={2000}
           />
-          <Button type="submit" disabled={sending}>
-            {sending ? "Thinking..." : "Ask"}
-          </Button>
+          {sending ? (
+            <Button type="button" variant="secondary" onClick={() => abortRef.current?.abort()}>
+              Stop
+            </Button>
+          ) : (
+            <Button type="submit">Ask</Button>
+          )}
         </form>
       )}
 
@@ -151,6 +221,22 @@ export default function ConversationThreadPage({
         </Button>
       )}
       {conversation.ended_at && <p className="text-sm text-gray-500">This conversation has ended.</p>}
+    </div>
+  );
+}
+
+function MessageSources({ spaceId, sources }: { spaceId: string; sources: MessageSource[] }) {
+  return (
+    <div className="mt-2 flex flex-col gap-1 border-t border-gray-900/8 pt-2">
+      {sources.map((source, index) => (
+        <Link
+          key={source.item_id}
+          href={`/spaces/${spaceId}/items/${source.item_id}`}
+          className="text-xs text-brand-700 hover:underline"
+        >
+          [{index + 1}] {source.title}
+        </Link>
+      ))}
     </div>
   );
 }
